@@ -40,8 +40,7 @@ go build -o dexgram.exe .\cmd\dexgram
 
 ## Windows Resource and Binary Version
 
-Dexgram embeds Windows file metadata through `goversioninfo`, matching the
-pattern used by the Viberator project.
+Dexgram embeds Windows file metadata through `goversioninfo`.
 
 The entrypoint contains:
 
@@ -74,9 +73,6 @@ To change the binary version or author metadata:
 ```powershell
 go generate ./cmd/dexgram
 ```
-
-Current expected metadata is version `0.1.9` and author/copyright
-`2026 Yashau`.
 
 If `goversioninfo` is missing, install it with:
 
