@@ -392,7 +392,13 @@ func (a *app) collectTopicSession(ctx context.Context, key string, session *acti
 		case "item/started":
 			var item codex.ItemStartedNotification
 			if json.Unmarshal(ev.Params, &item) == nil {
-				if tgTurn := a.sessionTurn(key, item.TurnID); tgTurn != nil && isRunLogItem(item.Item) {
+				tgTurn := a.sessionTurn(key, item.TurnID)
+				if tgTurn == nil {
+					continue
+				}
+				if isCompactionNoticeItem(item.Item) {
+					tgTurn.startCompactionDraft(ctx, a.bot, item.Item.ID)
+				} else if isRunLogItem(item.Item) {
 					tgTurn.ensureRunLog(ctx, a.bot)
 					tgTurn.RunLog.start(item.Item)
 				}
@@ -413,6 +419,13 @@ func (a *app) collectTopicSession(ctx context.Context, key string, session *acti
 			if json.Unmarshal(ev.Params, &delta) == nil {
 				if tgTurn := a.sessionTurn(key, delta.TurnID); tgTurn != nil {
 					tgTurn.Buffers[delta.ItemID] += delta.Delta
+					if tgTurn.isCompactionItemID(delta.ItemID) {
+						tgTurn.startCompactionDraft(ctx, a.bot, delta.ItemID)
+						continue
+					}
+					if tgTurn.CompactionCancel != nil {
+						tgTurn.stopCompactionDraft()
+					}
 					tgTurn.ensureInitial(ctx, a.bot)
 					tgTurn.Initial.draft(tgTurn.Buffers[delta.ItemID])
 				}
@@ -424,6 +437,10 @@ func (a *app) collectTopicSession(ctx context.Context, key string, session *acti
 			}
 			tgTurn := a.sessionTurn(key, item.TurnID)
 			if tgTurn == nil {
+				continue
+			}
+			if tgTurn.isCompactionItemID(item.Item.ID) || isCompactionNoticeItem(item.Item) {
+				tgTurn.stopCompactionDraft()
 				continue
 			}
 			switch item.Item.Type {
@@ -465,6 +482,7 @@ func (a *app) collectTopicSession(ctx context.Context, key string, session *acti
 			if answer == "" {
 				answer = "Codex completed without a final text answer."
 			}
+			tgTurn.stopCompactionDraft()
 			if tgTurn.RunLog != nil {
 				tgTurn.RunLog.finish()
 			}

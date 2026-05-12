@@ -28,28 +28,61 @@ function Convert-DexgramVersion {
     }
 }
 
-function Stop-DexgramParentForUpdate {
+function Stop-DexgramForUpdate {
     if (-not $isUpdate) {
         return
     }
-    if ([string]::IsNullOrWhiteSpace($env:DEXGRAM_UPDATE_PARENT_PID)) {
-        return
-    }
     $parentPid = 0
-    if (-not [int]::TryParse($env:DEXGRAM_UPDATE_PARENT_PID, [ref]$parentPid)) {
+    if (-not [string]::IsNullOrWhiteSpace($env:DEXGRAM_UPDATE_PARENT_PID)) {
+        [int]::TryParse($env:DEXGRAM_UPDATE_PARENT_PID, [ref]$parentPid) | Out-Null
+    }
+
+    $targets = @(Get-Process -Name "dexgram" -ErrorAction SilentlyContinue | Where-Object {
+        try {
+            [string]::Equals($_.Path, $exePath, [System.StringComparison]::OrdinalIgnoreCase)
+        } catch {
+            $_.Id -eq $parentPid
+        }
+    })
+    if ($targets.Count -eq 0 -and $parentPid -gt 0) {
+        $parent = Get-Process -Id $parentPid -ErrorAction SilentlyContinue
+        if ($parent) {
+            $targets = @($parent)
+        }
+    }
+    if ($targets.Count -eq 0) {
         return
     }
-    $parent = Get-Process -Id $parentPid -ErrorAction SilentlyContinue
-    if (-not $parent) {
-        return
-    }
+
     Write-Host "Stopping running Dexgram..."
-    Stop-Process -Id $parentPid -Force
-    try {
-        $parent.WaitForExit(10000) | Out-Null
-    } catch {
+    foreach ($process in $targets) {
+        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+    }
+    foreach ($process in $targets) {
+        try {
+            $process.WaitForExit(10000) | Out-Null
+        } catch {
+        }
     }
     Start-Sleep -Milliseconds 500
+}
+
+function Copy-DexgramExecutable {
+    param(
+        [string]$Source,
+        [string]$Destination
+    )
+    $lastError = $null
+    for ($attempt = 1; $attempt -le 20; $attempt++) {
+        try {
+            Copy-Item -Path $Source -Destination $Destination -Force
+            return
+        } catch {
+            $lastError = $_
+            Start-Sleep -Milliseconds 250
+        }
+    }
+    throw $lastError
 }
 
 if ($isUpdate) {
@@ -116,8 +149,8 @@ try {
         }
         $sourceExe = $candidate.FullName
     }
-    Stop-DexgramParentForUpdate
-    Copy-Item -Path $sourceExe -Destination $exePath -Force
+    Stop-DexgramForUpdate
+    Copy-DexgramExecutable -Source $sourceExe -Destination $exePath
 } finally {
     Remove-Item -Path $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
 }

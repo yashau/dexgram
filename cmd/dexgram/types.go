@@ -40,18 +40,21 @@ type activeTurn struct {
 }
 
 type telegramTurn struct {
-	TurnID          string
-	ChatID          int64
-	MessageThreadID int
-	StatusMessageID int
-	Text            string
-	Input           []map[string]any
-	LastAgent       string
-	FinalAnswer     string
-	Buffers         map[string]string
-	Initial         *liveTextMessage
-	RunLog          *runLog
-	SentFiles       map[string]bool
+	TurnID           string
+	ChatID           int64
+	MessageThreadID  int
+	StatusMessageID  int
+	Text             string
+	Input            []map[string]any
+	LastAgent        string
+	FinalAnswer      string
+	Buffers          map[string]string
+	Initial          *liveTextMessage
+	RunLog           *runLog
+	SentFiles        map[string]bool
+	CompactionDraft  *liveTextMessage
+	CompactionItemID string
+	CompactionCancel context.CancelFunc
 }
 
 type turnAction struct {
