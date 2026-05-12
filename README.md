@@ -12,8 +12,9 @@ Desktop, or go the other way when the same thread is available there.
 
 ## Windows Only
 
-Dexgram is designed for Windows. Its service mode uses Windows Task Scheduler,
-and its default paths use `%APPDATA%` and `%LOCALAPPDATA%`.
+Dexgram is designed for Windows. Its service mode uses a current-user Windows
+Task Scheduler login task, with a Startup-folder fallback if Task Scheduler
+denies access.
 
 Because, apparently, macOS is not the only desktop allowed to receive nice
 things.
@@ -94,7 +95,7 @@ Start Dexgram:
 
 ## Service Mode
 
-Dexgram can install itself as a user-login scheduled task:
+Dexgram can install itself as a user-login background process:
 
 ```powershell
 .\dexgram.exe service install
@@ -102,7 +103,9 @@ Dexgram can install itself as a user-login scheduled task:
 ```
 
 This is not a Windows Service. It runs in the signed-in user's context so it can
-talk to the same Codex Desktop environment.
+talk to the same Codex Desktop environment. Dexgram tries a current-user
+scheduled task first; if Windows denies that, it installs a per-user Startup
+folder fallback.
 
 Service paths:
 

@@ -5,7 +5,7 @@
 #
 #   .\dexgram.exe -config .\path\to\dexgram.toml
 #
-# User-login scheduled task mode uses fixed paths:
+# User-login service mode uses fixed paths:
 #
 #   Binary: %LOCALAPPDATA%\Dexgram\dexgram.exe
 #   Config: %APPDATA%\Dexgram\dexgram.toml
@@ -57,8 +57,8 @@ cwd = ""
 # Leave empty to use PATH and Dexgram's Windows auto-discovery:
 #   %LOCALAPPDATA%\OpenAI\Codex\bin\codex.exe
 #
-# Set explicitly when running Dexgram as a service, scheduled task, or hidden
-# process where PATH may not include Codex.
+# Set explicitly when running Dexgram as a service/background process where PATH
+# may not include Codex.
 cli_path = "C:\\Users\\Yashau\\AppData\\Local\\OpenAI\\Codex\\bin\\codex.exe"
 
 # Codex approval policy for Dexgram-created chats.

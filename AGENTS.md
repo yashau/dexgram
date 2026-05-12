@@ -75,7 +75,7 @@ To change the binary version or author metadata:
 go generate ./cmd/dexgram
 ```
 
-Current expected metadata is version `0.1.3` and author/copyright
+Current expected metadata is version `0.1.4` and author/copyright
 `2026 Yashau`.
 
 If `goversioninfo` is missing, install it with:
@@ -91,7 +91,8 @@ On Windows, ensure `%USERPROFILE%\go\bin` is on `PATH` before running
 
 Dexgram is intentionally Windows-specific:
 
-- Service mode uses Windows Task Scheduler, not a Windows Service.
+- Service mode prefers a current-user Windows Task Scheduler login task, falls
+  back to a per-user Startup folder item, and is not a Windows Service.
 - Default paths use `%APPDATA%` and `%LOCALAPPDATA%`.
 - The Codex CLI is auto-discovered at
   `%LOCALAPPDATA%\OpenAI\Codex\bin\codex.exe`.
@@ -108,7 +109,7 @@ the user explicitly asks for that.
 - Use structured parsing for TOML, JSON, and SQLite data instead of ad hoc
   string manipulation.
 - Keep logs and errors useful for a user running Dexgram from PowerShell or as
-  a scheduled task.
+  a background login task.
 
 ## Quick Smoke Checks
 

@@ -33,10 +33,11 @@ func runUpdateCommand() error {
 	}
 	if cmp >= 0 {
 		fmt.Printf("Dexgram is already up to date (%s).\n", appVersion)
+		fmt.Println()
 		return nil
 	}
 
-	fmt.Printf("Updating Dexgram %s -> %s...\n", appVersion, strings.TrimPrefix(latest, "v"))
+	fmt.Printf("Updating Dexgram %s -> %s...\n\n", appVersion, strings.TrimPrefix(latest, "v"))
 	script := fmt.Sprintf(
 		"$env:UPDATE='true'; $env:DEXGRAM_UPDATE_PARENT_PID='%s'; irm %s | iex",
 		strconv.Itoa(os.Getpid()),

@@ -135,9 +135,10 @@ Runtime Behavior
 
 Service Mode
 
-  Dexgram service mode is a Windows Task Scheduler user-login task. It is not a
-  Windows Service, so it runs as the signed-in user and can talk to the same
-  Codex/Desktop context.
+  Dexgram service mode prefers a current-user Windows Task Scheduler login
+  task. If Task Scheduler denies access, Dexgram installs a per-user Startup
+  folder fallback. It is not a Windows Service, so it runs as the signed-in user
+  and can talk to the same Codex/Desktop context.
 
   Fixed service paths:
     Binary: %%LOCALAPPDATA%%\Dexgram\dexgram.exe

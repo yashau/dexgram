@@ -137,6 +137,7 @@ if ($isUpdate) {
     Write-Host ""
     Write-Host "Dexgram updated."
     Write-Host "Next: dexgram -check"
+    Write-Host ""
     return
 }
 

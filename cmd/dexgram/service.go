@@ -77,6 +77,7 @@ func serviceInstall() error {
 	exePath := mustServiceExePath()
 	configPath := mustServiceConfigPath()
 	logPath := mustServiceLogPath()
+	taskUser := currentTaskUser()
 	if err := os.MkdirAll(filepath.Dir(exePath), 0o755); err != nil {
 		return fmt.Errorf("create binary directory: %w", err)
 	}
@@ -86,15 +87,39 @@ func serviceInstall() error {
 
 	warnings := servicePathWarnings(exePath, configPath)
 	taskRun := fmt.Sprintf(`"%s" -config "%s" -log "%s"`, exePath, configPath, logPath)
-	out, err := runSchtasks("/Create", "/TN", serviceTaskName, "/SC", "ONLOGON", "/TR", taskRun, "/RL", "LIMITED", "/F")
+	args := []string{"/Create", "/TN", serviceTaskName, "/SC", "ONLOGON", "/TR", taskRun, "/RL", "LIMITED", "/F"}
+	if taskUser != "" {
+		args = append(args, "/RU", taskUser, "/IT")
+	}
+	out, err := runSchtasks(args...)
 	if err != nil {
-		return err
+		if !isAccessDenied(out) {
+			return err
+		}
+		if fallbackErr := installStartupFallback(taskRun); fallbackErr != nil {
+			return fmt.Errorf("%w\nstartup fallback failed: %v", err, fallbackErr)
+		}
+		fmt.Printf("scheduled task access denied; installed Startup fallback %q\n", mustStartupEntryPath())
+		if startErr := startDexgramDirect(); startErr != nil {
+			return startErr
+		}
+		for _, warning := range warnings {
+			fmt.Fprintln(os.Stderr, "warning:", warning)
+		}
+		fmt.Printf("binary: %s\n", exePath)
+		fmt.Printf("config: %s\n", configPath)
+		fmt.Printf("log:    %s\n", logPath)
+		return nil
 	}
 	printNonEmpty(out)
+	_ = removeStartupFallback()
 	for _, warning := range warnings {
 		fmt.Fprintln(os.Stderr, "warning:", warning)
 	}
 	fmt.Printf("installed user-login task %q\n", serviceTaskName)
+	if taskUser != "" {
+		fmt.Printf("user:   %s\n", taskUser)
+	}
 	fmt.Printf("binary: %s\n", exePath)
 	fmt.Printf("config: %s\n", configPath)
 	fmt.Printf("log:    %s\n", logPath)
@@ -102,23 +127,32 @@ func serviceInstall() error {
 }
 
 func serviceUninstall() error {
+	_ = serviceStop(true)
 	out, err := runSchtasks("/Delete", "/TN", serviceTaskName, "/F")
 	if err != nil {
-		if isTaskNotFound(out) {
-			fmt.Printf("scheduled task %q is not installed\n", serviceTaskName)
-			return nil
+		if !isTaskNotFound(out) {
+			return err
 		}
+	} else {
+		printNonEmpty(out)
+		fmt.Printf("removed scheduled task %q\n", serviceTaskName)
+	}
+	if err := removeStartupFallback(); err != nil {
 		return err
 	}
-	printNonEmpty(out)
-	fmt.Printf("removed scheduled task %q\n", serviceTaskName)
 	return nil
 }
 
 func serviceStart() error {
 	out, err := runSchtasks("/Run", "/TN", serviceTaskName)
 	if err != nil {
-		return err
+		if !isTaskNotFound(out) {
+			return err
+		}
+		if !startupFallbackInstalled() {
+			return fmt.Errorf("service is not installed; run %s service install", filepath.Base(os.Args[0]))
+		}
+		return startDexgramDirect()
 	}
 	printNonEmpty(out)
 	fmt.Printf("started scheduled task %q\n", serviceTaskName)
@@ -150,16 +184,23 @@ func serviceStatus() error {
 	fmt.Printf("binary: %s\n", mustServiceExePath())
 	fmt.Printf("config: %s\n", mustServiceConfigPath())
 	fmt.Printf("log:    %s\n", mustServiceLogPath())
-	fmt.Printf("state:  %s\n\n", mustServiceStatePath())
+	fmt.Printf("state:  %s\n", mustServiceStatePath())
+	fmt.Printf("startup fallback: %s\n\n", mustStartupEntryPath())
 	out, err := runSchtasks("/Query", "/TN", serviceTaskName, "/FO", "LIST", "/V")
 	if err != nil {
 		if isTaskNotFound(out) {
 			fmt.Printf("scheduled task %q is not installed\n", serviceTaskName)
-			return nil
+		} else {
+			return err
 		}
-		return err
+	} else {
+		printNonEmpty(out)
 	}
-	printNonEmpty(out)
+	if startupFallbackInstalled() {
+		fmt.Printf("Startup fallback is installed at %s\n", mustStartupEntryPath())
+	} else {
+		fmt.Println("Startup fallback is not installed")
+	}
 	return nil
 }
 
@@ -193,6 +234,68 @@ func isTaskNotFound(text string) bool {
 		strings.Contains(lower, "cannot find")
 }
 
+func isAccessDenied(text string) bool {
+	lower := strings.ToLower(text)
+	return strings.Contains(lower, "access is denied") ||
+		strings.Contains(lower, "access denied")
+}
+
+func currentTaskUser() string {
+	user := strings.TrimSpace(os.Getenv("USERNAME"))
+	if user == "" {
+		return ""
+	}
+	domain := strings.TrimSpace(os.Getenv("USERDOMAIN"))
+	if domain == "" || strings.Contains(user, `\`) {
+		return user
+	}
+	return domain + `\` + user
+}
+
+func installStartupFallback(command string) error {
+	path := mustStartupEntryPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create startup directory: %w", err)
+	}
+	content := "@echo off\r\n" +
+		"rem Dexgram user-login startup fallback\r\n" +
+		"start \"\" /min cmd.exe /d /c " + quoteCmdArg(command) + "\r\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("write startup fallback: %w", err)
+	}
+	return nil
+}
+
+func removeStartupFallback() error {
+	path := mustStartupEntryPath()
+	if err := os.Remove(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("remove Startup fallback: %w", err)
+	}
+	fmt.Printf("removed Startup fallback %q\n", path)
+	return nil
+}
+
+func startupFallbackInstalled() bool {
+	_, err := os.Stat(mustStartupEntryPath())
+	return err == nil
+}
+
+func startDexgramDirect() error {
+	cmd := exec.Command(mustServiceExePath(), "-config", mustServiceConfigPath(), "-log", mustServiceLogPath())
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start Dexgram: %w", err)
+	}
+	fmt.Printf("started Dexgram process pid=%d\n", cmd.Process.Pid)
+	return cmd.Process.Release()
+}
+
+func quoteCmdArg(value string) string {
+	return `"` + strings.ReplaceAll(value, `"`, `\"`) + `"`
+}
+
 func servicePathWarnings(exePath, configPath string) []string {
 	var warnings []string
 	if _, err := os.Stat(exePath); errors.Is(err, os.ErrNotExist) {
@@ -218,6 +321,10 @@ func mustServiceLogPath() string {
 
 func mustServiceStatePath() string {
 	return filepath.Join(mustRoamingAppData(), "Dexgram", "dexgram.db")
+}
+
+func mustStartupEntryPath() string {
+	return filepath.Join(mustRoamingAppData(), "Microsoft", "Windows", "Start Menu", "Programs", "Startup", serviceTaskName+".cmd")
 }
 
 func mustLocalAppData() string {
