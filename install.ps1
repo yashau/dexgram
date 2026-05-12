@@ -16,10 +16,6 @@ $statePath = Join-Path $configDir "dexgram.db"
 $tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) ("dexgram-install-" + [guid]::NewGuid().ToString("N"))
 
 Write-Host "Installing Dexgram..."
-Write-Host "Binary: $exePath"
-Write-Host "Config: $configPath"
-Write-Host "Logs:   $logPath"
-Write-Host "State:  $statePath"
 
 New-Item -ItemType Directory -Force -Path $binDir, $configDir | Out-Null
 if (-not (Test-Path $logPath)) {
