@@ -317,7 +317,7 @@ func printDexgramRuntimeStatus() {
 }
 
 func runningDexgramProcesses() ([]string, error) {
-	script := `Get-Process -Name dexgram -ErrorAction SilentlyContinue | Select-Object Id,Path | ConvertTo-Json -Compress`
+	script := fmt.Sprintf(`Get-Process -Name dexgram -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne %d } | Select-Object Id,Path | ConvertTo-Json -Compress`, os.Getpid())
 	out, err := exec.Command("powershell.exe", "-NoProfile", "-Command", script).CombinedOutput()
 	text := strings.TrimSpace(string(out))
 	if err != nil && text != "" {
