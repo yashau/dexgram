@@ -1,0 +1,83 @@
+# Dexgram configuration reference.
+#
+# Copy this file to dexgram.toml and fill in the Telegram bot token. Dexgram
+# reads dexgram.toml by default, or another file with:
+#
+#   .\dexgram.exe -config .\path\to\dexgram.toml
+#
+# User-login scheduled task mode uses fixed paths:
+#
+#   Binary: %LOCALAPPDATA%\Dexgram\dexgram.exe
+#   Config: %APPDATA%\Dexgram\dexgram.toml
+#   Logs:   %APPDATA%\Dexgram\dexgram.log
+#   State:  %APPDATA%\Dexgram\dexgram.db
+#
+# Install/manage it with:
+#
+#   dexgram service install
+#   dexgram service start
+
+[telegram]
+
+# Required. Bot token from @BotFather.
+#
+# BotFather setup required for Dexgram topics:
+#   Bot Settings -> Threads Settings -> Threaded Mode: enabled
+#
+# Keep the real token only in dexgram.toml. Do not commit it.
+bot_token = "123456789:replace-me"
+
+# Required for normal operation. Private 1:1 chat id between you and the bot.
+#
+# Set to 0 temporarily to discover the id. With chat_id = 0, Dexgram will log
+# updates from any chat it can see; send the bot a DM and copy the logged
+# chat_id here.
+#
+# Example private chat ids are positive integers. Supergroup ids are usually
+# negative -100... values, but Dexgram's primary mode is private 1:1 threaded
+# chat, not groups.
+chat_id = 0
+
+[codex]
+
+# Optional fallback working directory for legacy/stored project mappings only.
+#
+# Normal one-off chats mimic Codex Desktop's "Don't work in a project" mode.
+# Dexgram prepares a dated workspace under:
+#
+#   %USERPROFILE%\Documents\Codex\YYYY-MM-DD\chat-title
+#
+# Then it starts app-server with that folder as cwd and registers the resulting
+# Codex thread in Desktop's projectless thread list. If /project is used before
+# the first prompt, the selected Codex project's cwd is used instead.
+cwd = ""
+
+# Optional. Absolute path to codex.exe.
+#
+# Leave empty to use PATH and Dexgram's Windows auto-discovery:
+#   %LOCALAPPDATA%\OpenAI\Codex\bin\codex.exe
+#
+# Set explicitly when running Dexgram as a service, scheduled task, or hidden
+# process where PATH may not include Codex.
+cli_path = "C:\\Users\\Yashau\\AppData\\Local\\OpenAI\\Codex\\bin\\codex.exe"
+
+# Codex approval policy for Dexgram-created chats.
+#
+# Possible values currently used by Codex app-server:
+#   "never"       Full Access style. Do not ask before commands/tools.
+#   "on-request" Ask for approval when Codex needs to escape the sandbox or
+#                run actions that require review.
+#
+# Dexgram defaults to "never" for mobile continuity. Use "on-request" if you
+# want Telegram approval buttons for stricter operation.
+approval_policy = "never"
+
+# Codex sandbox mode for Dexgram-created chats.
+#
+# Possible values currently used by Codex app-server:
+#   "danger-full-access"  No filesystem sandbox. Best match for Full Access.
+#   "workspace-write"     Allow writes inside the workspace, restrict outside.
+#   "read-only"           No filesystem writes without approval.
+#
+# Dexgram defaults to "danger-full-access" for mobile continuity.
+sandbox = "danger-full-access"

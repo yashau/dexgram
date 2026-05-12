@@ -1,0 +1,169 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log"
+	"strings"
+
+	"dexgram/internal/codex"
+
+	"github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
+)
+
+func reconcileCommands(ctx context.Context, b *bot.Bot, chatID int64) error {
+	scopes := []models.BotCommandScope{
+		&models.BotCommandScopeDefault{},
+		&models.BotCommandScopeAllPrivateChats{},
+	}
+	if chatID != 0 {
+		scopes = append(scopes, &models.BotCommandScopeChat{ChatID: chatID})
+	}
+
+	var errs []error
+	for _, scope := range scopes {
+		if _, err := b.DeleteMyCommands(ctx, &bot.DeleteMyCommandsParams{Scope: scope}); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+
+	commands := []models.BotCommand{
+		{Command: "project", Description: "Set the Codex project before this chat starts"},
+		{Command: "new", Description: "Create a new Telegram topic for a Codex chat"},
+		{Command: "status", Description: "Show this topic's Dexgram mapping and turn state"},
+		{Command: "sync", Description: "Mirror completed Codex turns into this topic"},
+		{Command: "steer", Description: "Steer the active Codex turn"},
+		{Command: "goal", Description: "Set the Codex goal for this topic"},
+		{Command: "stop", Description: "Stop the active Codex turn"},
+		{Command: "cancel", Description: "Alias for /stop"},
+	}
+	if _, err := b.SetMyCommands(ctx, &bot.SetMyCommandsParams{
+		Commands: commands,
+		Scope:    &models.BotCommandScopeDefault{},
+	}); err != nil {
+		return fmt.Errorf("register default commands: %w", err)
+	}
+	if chatID != 0 {
+		if _, err := b.SetMyCommands(ctx, &bot.SetMyCommandsParams{
+			Commands: commands,
+			Scope:    &models.BotCommandScopeChat{ChatID: chatID},
+		}); err != nil {
+			return fmt.Errorf("register chat commands: %w", err)
+		}
+	}
+	return nil
+}
+
+func ensureThreadedMode(ctx context.Context, b *bot.Bot, me *models.User, chatID int64) error {
+	var missing []string
+	if !me.HasTopicsEnabled {
+		missing = append(missing, "Threaded Mode")
+	}
+	if !me.AllowsUsersToCreateTopics {
+		missing = append(missing, "users creating topics")
+	}
+	if len(missing) == 0 {
+		log.Printf("telegram threaded mode is enabled")
+		return nil
+	}
+
+	message := threadedModeSetupMessage(me.Username, missing)
+	if chatID != 0 {
+		if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: chatID,
+			Text:   message,
+		}); err != nil {
+			log.Printf("could not send threaded-mode setup guidance to chat_id=%d: %v", chatID, err)
+		}
+	}
+	return fmt.Errorf("telegram bot is not ready for private chat topics: %s", message)
+}
+
+func threadedModeSetupMessage(username string, missing []string) string {
+	name := "@BotFather"
+	if username != "" {
+		name = fmt.Sprintf("@%s via @BotFather", username)
+	}
+	return fmt.Sprintf(
+		"Dexgram needs Telegram threaded mode before it can create per-project topics.\n\n"+
+			"Missing: %s.\n\n"+
+			"Open @BotFather, choose %s, then go to Bot Settings -> Threads Settings and enable Threaded Mode. "+
+			"Also leave user-created topics enabled. Restart Dexgram after saving the setting.",
+		strings.Join(missing, ", "),
+		name,
+	)
+}
+
+func threadTitle(t codex.Thread) string {
+	if strings.TrimSpace(t.Name) != "" {
+		return strings.TrimSpace(t.Name)
+	}
+	if strings.TrimSpace(t.Preview) != "" {
+		return strings.TrimSpace(t.Preview)
+	}
+	return ""
+}
+
+func topicTitle(projectName, chatName string) string {
+	projectName = strings.TrimSpace(projectName)
+	chatName = strings.TrimSpace(chatName)
+	if projectName == "" || strings.EqualFold(projectName, "One-off") {
+		return truncateTopicPart(chatName, 32)
+	}
+	if chatName == "" {
+		return truncateTopicPart(projectName, 32)
+	}
+	return balancedTopicTitle(projectName, chatName, 32)
+}
+
+func balancedTopicTitle(projectName, chatName string, max int) string {
+	const sep = ": "
+	projectName = compactSpaces(projectName)
+	chatName = compactSpaces(chatName)
+	if runeLen(projectName)+len(sep)+runeLen(chatName) <= max {
+		return projectName + sep + chatName
+	}
+	budget := max - len(sep)
+	if budget < 5 {
+		return truncateTopicPart(projectName+sep+chatName, max)
+	}
+	projectBudget := budget / 2
+	chatBudget := budget - projectBudget
+	if runeLen(projectName) < projectBudget {
+		chatBudget += projectBudget - runeLen(projectName)
+		projectBudget = runeLen(projectName)
+	}
+	if runeLen(chatName) < chatBudget {
+		projectBudget += chatBudget - runeLen(chatName)
+		chatBudget = runeLen(chatName)
+	}
+	return truncateTopicPart(projectName, projectBudget) + sep + truncateTopicPart(chatName, chatBudget)
+}
+
+func truncateTopicPart(s string, max int) string {
+	s = compactSpaces(s)
+	if max <= 0 {
+		return ""
+	}
+	if runeLen(s) <= max {
+		return s
+	}
+	if max <= 3 {
+		return string([]rune(s)[:max])
+	}
+	r := []rune(s)
+	return string(r[:max-1]) + "…"
+}
+
+func compactSpaces(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+func runeLen(s string) int {
+	return len([]rune(s))
+}

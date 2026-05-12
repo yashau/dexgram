@@ -1,0 +1,151 @@
+//go:generate goversioninfo -64 -o resource.syso
+
+package main
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"log"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"syscall"
+
+	"dexgram/internal/codexprojects"
+	"dexgram/internal/config"
+	"dexgram/internal/state"
+
+	"github.com/go-telegram/bot"
+)
+
+func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	if len(os.Args) > 1 && os.Args[1] == "service" {
+		return runServiceCommand(os.Args[2:])
+	}
+	if len(os.Args) > 1 && os.Args[1] == "onboard" {
+		return runOnboardCommand(os.Args[2:])
+	}
+
+	var configPath string
+	var logPath string
+	var checkOnly bool
+	fs := flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ContinueOnError)
+	fs.SetOutput(os.Stdout)
+	fs.StringVar(&configPath, "config", "dexgram.toml", "path to Dexgram TOML config")
+	fs.StringVar(&logPath, "log", "", "append daemon logs to this file")
+	fs.BoolVar(&checkOnly, "check", false, "validate Telegram setup and exit before polling")
+	fs.Usage = func() {
+		printHelp(fs.Output(), filepath.Base(os.Args[0]), fs)
+	}
+	if err := fs.Parse(os.Args[1:]); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return err
+	}
+
+	closeLog, err := configureLogFile(logPath)
+	if err != nil {
+		return err
+	}
+	defer closeLog()
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return err
+	}
+	store, err := state.Open("")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			log.Printf("close state store: %v", err)
+		}
+	}()
+	log.Printf("state path: %s", store.Path())
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	app := &app{
+		cfg:       cfg,
+		store:     store,
+		active:    map[string]*activeTurn{},
+		approvals: map[string]*pendingApproval{},
+		actions:   map[string]turnAction{},
+		inputs:    map[string]*pendingInput{},
+	}
+	app.projects, err = codexprojects.Load()
+	if err != nil {
+		return err
+	}
+	log.Printf("loaded %d Codex projects", len(app.projects))
+	tg, err := bot.New(cfg.Telegram.BotToken,
+		bot.WithDefaultHandler(app.handleUpdate),
+		bot.WithErrorsHandler(func(err error) {
+			log.Printf("telegram error: %v", err)
+		}),
+	)
+	if err != nil {
+		return err
+	}
+	app.bot = tg
+
+	me, err := tg.GetMe(ctx)
+	if err != nil {
+		return fmt.Errorf("get bot identity: %w", err)
+	}
+	log.Printf("connected to Telegram as @%s (%d)", me.Username, me.ID)
+
+	if err := ensureThreadedMode(ctx, tg, me, cfg.Telegram.ChatID); err != nil {
+		return err
+	}
+
+	if err := reconcileCommands(ctx, tg, cfg.Telegram.ChatID); err != nil {
+		return err
+	}
+	log.Printf("telegram slash commands cleared and registered")
+	log.Printf("codex mode approval_policy=%s sandbox=%s", cfg.Codex.ApprovalPolicy, cfg.Codex.Sandbox)
+
+	if checkOnly {
+		log.Printf("telegram setup check passed")
+		return nil
+	}
+
+	if cfg.Telegram.ChatID == 0 {
+		log.Printf("telegram.chat_id is 0; logging updates from any chat for discovery")
+	} else {
+		log.Printf("listening only in private topic chat_id=%d", cfg.Telegram.ChatID)
+	}
+	tg.Start(ctx)
+	return nil
+}
+
+func configureLogFile(path string) (func(), error) {
+	if path == "" {
+		return func() {}, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, fmt.Errorf("create log directory: %w", err)
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("open log file %s: %w", path, err)
+	}
+	log.SetOutput(io.MultiWriter(os.Stderr, f))
+	return func() {
+		log.SetOutput(os.Stderr)
+		_ = f.Close()
+	}, nil
+}
