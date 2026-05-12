@@ -10,6 +10,27 @@ Dexgram are registered in Codex Desktop's chat history, so you can start or
 continue a conversation from Telegram and then pick it up again in Codex
 Desktop.
 
+## Features
+
+- Creates Codex chats from Telegram topics, with each topic mapped to a
+  resumable Codex app-server thread.
+- Keeps Dexgram-created chats visible in Codex Desktop history so conversations
+  can move between Telegram and the desktop app.
+- Supports project-bound chats with fuzzy Codex Desktop project matching and
+  inline selection buttons for ambiguous matches.
+- Creates dated one-off workspaces for projectless chats, matching Codex
+  Desktop's "Don't work in a project" flow.
+- Mirrors Codex progress back to Telegram with initial replies, live run-log
+  updates, final answers, and a Stop button for active turns.
+- Queues new Telegram messages while Codex is busy, with inline controls to
+  steer queued items into the active turn or delete them before they run.
+- Supports native Codex goals from Telegram with `/goal <objective>`.
+- Downloads Telegram photos and documents for Codex prompts, stages
+  attachment-only messages, and uploads final-answer local file links back to
+  Telegram.
+- Installs as a current-user Windows login task, with a Startup-folder fallback
+  when Task Scheduler is unavailable.
+
 ## Windows Only
 
 Dexgram is designed for Windows. Its service mode uses a current-user Windows
