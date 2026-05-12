@@ -75,7 +75,7 @@ To change the binary version or author metadata:
 go generate ./cmd/dexgram
 ```
 
-Current expected metadata is version `0.1.4` and author/copyright
+Current expected metadata is version `0.1.5` and author/copyright
 `2026 Yashau`.
 
 If `goversioninfo` is missing, install it with:

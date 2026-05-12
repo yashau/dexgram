@@ -99,7 +99,7 @@ func serviceInstall() error {
 		if fallbackErr := installStartupFallback(taskRun); fallbackErr != nil {
 			return fmt.Errorf("%w\nstartup fallback failed: %v", err, fallbackErr)
 		}
-		fmt.Printf("scheduled task access denied; installed Startup fallback %q\n", mustStartupEntryPath())
+		fmt.Printf("installed Startup login item: %s\n", mustStartupEntryPath())
 		if startErr := startDexgramDirect(); startErr != nil {
 			return startErr
 		}
