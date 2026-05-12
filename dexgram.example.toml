@@ -38,6 +38,13 @@ bot_token = "123456789:replace-me"
 # chat, not groups.
 chat_id = 0
 
+# Optional. Upload local file links from Codex's final answer back to Telegram.
+#
+# Dexgram defaults this to false so final answers stay text-only unless you
+# explicitly opt in. When enabled, Markdown links in the final answer that point
+# to existing local files are uploaded after the final text answer.
+upload_final_answer_files = false
+
 [codex]
 
 # Optional fallback working directory for legacy/stored project mappings only.

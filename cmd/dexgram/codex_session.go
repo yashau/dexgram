@@ -484,7 +484,7 @@ func (a *app) collectTopicSession(ctx context.Context, key string, session *acti
 				sentAsNew = true
 				finalTextDelivered = true
 			}
-			if finalTextDelivered {
+			if finalTextDelivered && a.cfg.Telegram.UploadFinalAnswerFiles {
 				a.sendFinalAnswerFiles(ctx, tgTurn, session.conv.CWD, answer)
 			}
 			if sentAsNew && tgTurn.StatusMessageID != 0 {

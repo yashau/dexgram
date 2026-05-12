@@ -15,8 +15,9 @@ type Config struct {
 }
 
 type TelegramConfig struct {
-	BotToken string `toml:"bot_token"`
-	ChatID   int64  `toml:"chat_id"`
+	BotToken               string `toml:"bot_token"`
+	ChatID                 int64  `toml:"chat_id"`
+	UploadFinalAnswerFiles bool   `toml:"upload_final_answer_files"`
 }
 
 type CodexConfig struct {

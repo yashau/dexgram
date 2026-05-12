@@ -26,8 +26,8 @@ Desktop.
   steer queued items into the active turn or delete them before they run.
 - Supports native Codex goals from Telegram with `/goal <objective>`.
 - Downloads Telegram photos and documents for Codex prompts, stages
-  attachment-only messages, and uploads final-answer local file links back to
-  Telegram.
+  attachment-only messages, and can upload final-answer local file links back
+  to Telegram when enabled.
 - Installs as a current-user Windows login task, with a Startup-folder fallback
   when Task Scheduler is unavailable.
 
@@ -208,9 +208,17 @@ message in that chat. The same attachment handling applies when a prompt is
 queued behind an active Codex turn.
 
 Dexgram does not upload files reported by intermediate tool calls, file edits,
-or image-generation events while Codex is working. If the final assistant answer
-explicitly links to a local file, Dexgram uploads that file after the final text
-answer. Images are sent as photos; everything else is sent as a document.
+or image-generation events while Codex is working. By default, final answers are
+text-only. To upload files explicitly linked by the final assistant answer, opt
+in with:
+
+```toml
+[telegram]
+upload_final_answer_files = true
+```
+
+When enabled, images are sent as photos and everything else is sent as a
+document.
 
 ## License
 
