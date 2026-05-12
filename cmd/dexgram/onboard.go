@@ -96,7 +96,7 @@ func runOnboard(in io.Reader, out io.Writer, path string) error {
 	if cfg.Telegram.ChatID == 0 {
 		fmt.Fprintln(out, "telegram.chat_id is still 0. Run Dexgram once, DM the bot, then copy the logged chat_id into the config.")
 	}
-	fmt.Fprintf(out, "Next: %s -config %q -check\n", filepath.Base(os.Args[0]), path)
+	fmt.Fprintf(out, "Next: %s -check\n", filepath.Base(os.Args[0]))
 	return nil
 }
 

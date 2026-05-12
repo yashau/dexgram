@@ -41,7 +41,7 @@ func run() error {
 	var checkOnly bool
 	fs := flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ContinueOnError)
 	fs.SetOutput(os.Stdout)
-	fs.StringVar(&configPath, "config", "dexgram.toml", "path to Dexgram TOML config")
+	fs.StringVar(&configPath, "config", defaultConfigPath(), "path to Dexgram TOML config")
 	fs.StringVar(&logPath, "log", "", "append daemon logs to this file")
 	fs.BoolVar(&checkOnly, "check", false, "validate Telegram setup and exit before polling")
 	fs.Usage = func() {
@@ -130,6 +130,14 @@ func run() error {
 	}
 	tg.Start(ctx)
 	return nil
+}
+
+func defaultConfigPath() string {
+	local := "dexgram.toml"
+	if _, err := os.Stat(local); err == nil {
+		return local
+	}
+	return mustServiceConfigPath()
 }
 
 func configureLogFile(path string) (func(), error) {

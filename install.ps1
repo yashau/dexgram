@@ -10,9 +10,7 @@ $repo = "yashau/dexgram"
 $binDir = Join-Path $env:LOCALAPPDATA "Dexgram"
 $configDir = Join-Path $env:APPDATA "Dexgram"
 $exePath = Join-Path $binDir "dexgram.exe"
-$configPath = Join-Path $configDir "dexgram.toml"
 $logPath = Join-Path $configDir "dexgram.log"
-$statePath = Join-Path $configDir "dexgram.db"
 $tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) ("dexgram-install-" + [guid]::NewGuid().ToString("N"))
 
 Write-Host "Installing Dexgram..."
@@ -90,4 +88,4 @@ if ($process.ExitCode -ne 0) {
 
 Write-Host ""
 Write-Host "Dexgram installed."
-Write-Host "Next: dexgram -config `"$configPath`" -check"
+Write-Host "Next: dexgram -check"

@@ -54,7 +54,7 @@ Setup
 
 Config
 
-  Default config: .\dexgram.toml
+  Default config: .\dexgram.toml if present, otherwise %%APPDATA%%\Dexgram\dexgram.toml
   Example config: .\dexgram.example.toml
   Service config: %%APPDATA%%\Dexgram\dexgram.toml
 
@@ -162,8 +162,8 @@ Examples
     %[1]s -config .\dexgram.toml
 
   Discover chat id:
-    Set chat_id = 0 in dexgram.toml, run %[1]s, send the bot a DM,
-    then copy the logged chat_id into dexgram.toml.
+    Set chat_id = 0 in the config, run %[1]s, send the bot a DM,
+    then copy the logged chat_id back into the config.
 
 Notes
 
