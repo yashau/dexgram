@@ -8,7 +8,7 @@ Unlike most other Codex-to-Telegram bridges, Dexgram is specifically built aroun
 Codex Desktop and Codex app-server threads. Telegram chats created through
 Dexgram are registered in Codex Desktop's chat history, so you can start or
 continue a conversation from Telegram and then pick it up again in Codex
-Desktop, or go the other way when the same thread is available there.
+Desktop.
 
 ## Windows Only
 
@@ -123,7 +123,7 @@ State:  %APPDATA%\Dexgram\dexgram.db
   the first prompt. Project matching is fuzzy, so partial names usually work;
   if multiple projects match, Dexgram shows inline selection buttons.
 - `/status` shows the topic's Dexgram mapping and active turn state.
-- `/sync` mirrors completed Codex turns that have not been synced yet.
+- `/sync` mirrors new completed Codex turns for chats Dexgram already created.
 - `/steer <message>` steers the currently active Codex turn.
 - `/goal <objective>` sets the native Codex goal for the topic. As of writing,
   goals must be enabled in your Codex config first:
