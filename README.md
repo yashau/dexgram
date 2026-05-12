@@ -48,6 +48,12 @@ Dexgram config/log/state directories, and starts onboarding from the installed
 
 After onboarding, validate the setup with the command printed by the installer.
 
+Update later with:
+
+```powershell
+dexgram update
+```
+
 ### Option 2: Manual Setup
 
 If you already have `dexgram.exe`, run onboarding yourself:

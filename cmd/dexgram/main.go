@@ -35,6 +35,9 @@ func run() error {
 	if len(os.Args) > 1 && os.Args[1] == "onboard" {
 		return runOnboardCommand(os.Args[2:])
 	}
+	if len(os.Args) > 1 && os.Args[1] == "update" {
+		return runUpdateCommand()
+	}
 
 	var configPath string
 	var logPath string

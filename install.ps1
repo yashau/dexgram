@@ -7,13 +7,42 @@ if ([System.Environment]::OSVersion.Platform -ne [System.PlatformID]::Win32NT) {
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
 $repo = "yashau/dexgram"
+$isUpdate = @("1", "true", "yes") -contains ([string]$env:UPDATE).ToLowerInvariant()
 $binDir = Join-Path $env:LOCALAPPDATA "Dexgram"
 $configDir = Join-Path $env:APPDATA "Dexgram"
 $exePath = Join-Path $binDir "dexgram.exe"
 $logPath = Join-Path $configDir "dexgram.log"
 $tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) ("dexgram-install-" + [guid]::NewGuid().ToString("N"))
 
-Write-Host "Installing Dexgram..."
+function Stop-DexgramParentForUpdate {
+    if (-not $isUpdate) {
+        return
+    }
+    if ([string]::IsNullOrWhiteSpace($env:DEXGRAM_UPDATE_PARENT_PID)) {
+        return
+    }
+    $parentPid = 0
+    if (-not [int]::TryParse($env:DEXGRAM_UPDATE_PARENT_PID, [ref]$parentPid)) {
+        return
+    }
+    $parent = Get-Process -Id $parentPid -ErrorAction SilentlyContinue
+    if (-not $parent) {
+        return
+    }
+    Write-Host "Stopping running Dexgram..."
+    Stop-Process -Id $parentPid -Force
+    try {
+        $parent.WaitForExit(10000) | Out-Null
+    } catch {
+    }
+    Start-Sleep -Milliseconds 500
+}
+
+if ($isUpdate) {
+    Write-Host "Updating Dexgram..."
+} else {
+    Write-Host "Installing Dexgram..."
+}
 
 New-Item -ItemType Directory -Force -Path $binDir, $configDir | Out-Null
 if (-not (Test-Path $logPath)) {
@@ -53,6 +82,7 @@ try {
     Write-Host "Downloading $($asset.name) from $($release.tag_name)..."
     Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $downloadPath -Headers @{ "User-Agent" = "dexgram-installer" }
 
+    $sourceExe = $downloadPath
     if ($asset.name -match '(?i)\.zip$') {
         $extractDir = Join-Path $tmpDir "extract"
         Expand-Archive -Path $downloadPath -DestinationPath $extractDir -Force
@@ -60,10 +90,10 @@ try {
         if (-not $candidate) {
             throw "Release archive did not contain dexgram.exe."
         }
-        Copy-Item -Path $candidate.FullName -Destination $exePath -Force
-    } else {
-        Copy-Item -Path $downloadPath -Destination $exePath -Force
+        $sourceExe = $candidate.FullName
     }
+    Stop-DexgramParentForUpdate
+    Copy-Item -Path $sourceExe -Destination $exePath -Force
 } finally {
     Remove-Item -Path $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -78,6 +108,13 @@ if ($pathEntries -notcontains $binDir) {
 	Write-Host "$binDir is already on your user PATH."
 }
 $env:Path = (($env:Path -split ';' | Where-Object { $_ }) + $binDir | Select-Object -Unique) -join ';'
+
+if ($isUpdate) {
+    Write-Host ""
+    Write-Host "Dexgram updated."
+    Write-Host "Next: dexgram -check"
+    return
+}
 
 Write-Host ""
 Write-Host "Starting Dexgram onboarding..."

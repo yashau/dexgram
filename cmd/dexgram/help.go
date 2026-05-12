@@ -26,6 +26,7 @@ Usage
   %[1]s -check
   %[1]s -config .\dexgram.toml
   %[1]s onboard
+  %[1]s update
   %[1]s service <install|start|stop|restart|status|uninstall>
 
 Options
@@ -51,6 +52,12 @@ Setup
      Or install the user-login scheduled task:
        %[1]s service install
        %[1]s service start
+
+Update
+
+  %[1]s update
+      Run the installer in update mode. It downloads the latest release,
+      replaces %%LOCALAPPDATA%%\Dexgram\dexgram.exe, and skips onboarding.
 
 Config
 
