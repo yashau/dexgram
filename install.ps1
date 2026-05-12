@@ -14,6 +14,20 @@ $exePath = Join-Path $binDir "dexgram.exe"
 $logPath = Join-Path $configDir "dexgram.log"
 $tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) ("dexgram-install-" + [guid]::NewGuid().ToString("N"))
 
+function Convert-DexgramVersion {
+    param([string]$Value)
+    $clean = $Value.Trim()
+    if ($clean.StartsWith("v", [System.StringComparison]::OrdinalIgnoreCase)) {
+        $clean = $clean.Substring(1)
+    }
+    $clean = ($clean -split '[-+]')[0]
+    try {
+        return [version]$clean
+    } catch {
+        return $null
+    }
+}
+
 function Stop-DexgramParentForUpdate {
     if (-not $isUpdate) {
         return
@@ -59,6 +73,16 @@ try {
     $assets = @($release.assets)
     if ($assets.Count -eq 0) {
         throw "The latest release has no downloadable assets."
+    }
+
+    if ($isUpdate -and (Test-Path $exePath)) {
+        $installedInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exePath)
+        $installedVersion = Convert-DexgramVersion $installedInfo.FileVersion
+        $latestVersion = Convert-DexgramVersion $release.tag_name
+        if ($installedVersion -and $latestVersion -and $installedVersion -ge $latestVersion) {
+            Write-Host "Dexgram is already up to date ($($installedInfo.FileVersion))."
+            return
+        }
     }
 
     $asset = $assets |

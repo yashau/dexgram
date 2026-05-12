@@ -56,8 +56,9 @@ Setup
 Update
 
   %[1]s update
-      Run the installer in update mode. It downloads the latest release,
-      replaces %%LOCALAPPDATA%%\Dexgram\dexgram.exe, and skips onboarding.
+      Check GitHub for a newer release. If one exists, run the installer in
+      update mode, replace %%LOCALAPPDATA%%\Dexgram\dexgram.exe, and skip
+      onboarding.
 
 Config
 
