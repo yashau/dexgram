@@ -152,6 +152,13 @@ The active turn status message includes a `Stop` button. It does the same job
 as `/stop` or `/cancel`: Dexgram interrupts the current Codex turn for that
 topic.
 
+## Limitations
+
+- Dexgram does not import arbitrary Codex Desktop chats into Telegram.
+- `/sync` only works for chats Dexgram already created and mapped.
+- Desktop work in a mapped chat can be mirrored back with `/sync`; unrelated
+  Desktop chats will not appear in Telegram.
+
 ## Queued Messages
 
 If you send another Telegram message while Codex is already working in that
@@ -167,12 +174,18 @@ that message directly into the active Codex turn.
 
 ## Files And Attachments
 
-- Photos and image documents go to Codex as local images.
-- Other documents are downloaded and sent to Codex by absolute path.
-- Text plus files are submitted together.
-- File-only messages are staged for the next text prompt.
-- Queued prompts can include files too.
-- Codex-created files are uploaded back to Telegram when Dexgram sees them.
+Dexgram downloads Telegram photos, image documents, and regular documents to
+local files before sending them to Codex. Images are passed as local image
+inputs; other documents are included by absolute path.
+
+Messages that include both text and files are sent to Codex as one prompt. If
+you send files without text, Dexgram stages them and attaches them to the next
+message in that chat. The same attachment handling applies when a prompt is
+queued behind an active Codex turn.
+
+When Codex reports files it created or edited, Dexgram tries to upload them back
+to the Telegram chat. Images are sent as photos; everything else is sent as a
+document.
 
 ## License
 
