@@ -6,11 +6,12 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
-	"dexgram/internal/codex"
 	"dexgram/internal/state"
 
 	"github.com/go-telegram/bot"
@@ -161,17 +162,19 @@ func (a *app) downloadTelegramFile(ctx context.Context, b *bot.Bot, fileID, name
 	return path, nil
 }
 
-func (a *app) sendCodexOutputs(ctx context.Context, turn *telegramTurn, conv state.Conversation, item codex.ThreadItem) {
-	for _, path := range outputPaths(conv.CWD, item) {
+var finalAnswerMarkdownLinkRE = regexp.MustCompile(`!?\[[^\]\n]*\]\(([^)\n]+)\)`)
+
+func (a *app) sendFinalAnswerFiles(ctx context.Context, turn *telegramTurn, cwd, answer string) {
+	if turn.SentFiles == nil {
+		turn.SentFiles = map[string]bool{}
+	}
+	for _, path := range finalAnswerFilePaths(cwd, answer) {
 		if turn.SentFiles[path] {
 			continue
 		}
 		turn.SentFiles[path] = true
-		if _, err := os.Stat(path); err != nil {
-			continue
-		}
 		if err := a.sendOutputFile(ctx, turn, path); err != nil {
-			log.Printf("send output file %s: %v", path, err)
+			log.Printf("send final answer file %s: %v", path, err)
 		}
 	}
 }
@@ -201,15 +204,19 @@ func (a *app) sendOutputFile(ctx context.Context, turn *telegramTurn, path strin
 	return err
 }
 
-func outputPaths(cwd string, item codex.ThreadItem) []string {
+func finalAnswerFilePaths(cwd, answer string) []string {
 	var paths []string
-	if item.SavedPath != "" {
-		paths = append(paths, resolveOutputPath(cwd, item.SavedPath))
-	}
-	for _, change := range item.Changes {
-		if change.Path != "" {
-			paths = append(paths, resolveOutputPath(cwd, change.Path))
+	seen := map[string]bool{}
+	for _, match := range finalAnswerMarkdownLinkRE.FindAllStringSubmatch(answer, -1) {
+		if len(match) < 2 {
+			continue
 		}
+		path, ok := finalAnswerFilePath(cwd, match[1])
+		if !ok || seen[path] {
+			continue
+		}
+		seen[path] = true
+		paths = append(paths, path)
 	}
 	return paths
 }
@@ -219,6 +226,70 @@ func resolveOutputPath(cwd, path string) string {
 		return path
 	}
 	return filepath.Join(cwd, path)
+}
+
+func finalAnswerFilePath(cwd, target string) (string, bool) {
+	target = strings.TrimSpace(target)
+	target = strings.Trim(target, "<>")
+	target = strings.Trim(target, `"'`)
+	if target == "" || isRemoteLinkTarget(target) {
+		return "", false
+	}
+	if strings.HasPrefix(strings.ToLower(target), "file:") {
+		parsed, err := url.Parse(target)
+		if err != nil || parsed.Scheme != "file" {
+			return "", false
+		}
+		target = parsed.Path
+		if parsed.Host != "" {
+			target = `\\` + parsed.Host + filepath.FromSlash(target)
+		}
+	}
+	target = normalizeLinkedPath(target)
+	for _, candidate := range []string{target, stripLineReference(target)} {
+		path := resolveOutputPath(cwd, candidate)
+		info, err := os.Stat(path)
+		if err == nil && !info.IsDir() {
+			return filepath.Clean(path), true
+		}
+	}
+	return "", false
+}
+
+func isRemoteLinkTarget(target string) bool {
+	lower := strings.ToLower(target)
+	return strings.HasPrefix(lower, "http://") ||
+		strings.HasPrefix(lower, "https://") ||
+		strings.HasPrefix(lower, "app://") ||
+		strings.HasPrefix(lower, "plugin://") ||
+		strings.HasPrefix(lower, "mailto:")
+}
+
+func normalizeLinkedPath(path string) string {
+	path = strings.TrimSpace(path)
+	if len(path) >= 3 && (path[0] == '/' || path[0] == '\\') &&
+		isASCIILetter(path[1]) && (path[2] == '/' || path[2] == '\\') {
+		path = string([]byte{path[1], ':'}) + path[2:]
+	}
+	if len(path) >= 3 && path[0] == '/' && isASCIILetter(path[1]) && path[2] == ':' {
+		path = path[1:]
+	}
+	return filepath.FromSlash(path)
+}
+
+func stripLineReference(path string) string {
+	i := len(path) - 1
+	for i >= 0 && path[i] >= '0' && path[i] <= '9' {
+		i--
+	}
+	if i >= 0 && i < len(path)-1 && path[i] == ':' {
+		return path[:i]
+	}
+	return path
+}
+
+func isASCIILetter(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
 }
 
 func largestPhoto(photos []models.PhotoSize) models.PhotoSize {

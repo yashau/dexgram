@@ -445,9 +445,6 @@ func (a *app) collectTopicSession(ctx context.Context, key string, session *acti
 					tgTurn.ensureRunLog(ctx, a.bot)
 					tgTurn.RunLog.complete(item.Item)
 				}
-				if item.Item.Type == "fileChange" || item.Item.Type == "imageGeneration" {
-					a.sendCodexOutputs(ctx, tgTurn, session.conv, item.Item)
-				}
 			}
 		case "turn/completed":
 			var done codex.TurnCompletedNotification
@@ -473,15 +470,22 @@ func (a *app) collectTopicSession(ctx context.Context, key string, session *acti
 				tgTurn.Initial.delete()
 			}
 			sentAsNew := false
+			finalTextDelivered := false
 			if err := sendRichMessage(ctx, a.bot, tgTurn.ChatID, tgTurn.MessageThreadID, answer); err != nil {
 				log.Printf("send final message: %v", err)
 				if tgTurn.StatusMessageID != 0 {
 					if editErr := editRichMessage(ctx, a.bot, tgTurn.ChatID, tgTurn.StatusMessageID, answer); editErr != nil {
 						log.Printf("edit fallback final message: %v", editErr)
+					} else {
+						finalTextDelivered = true
 					}
 				}
 			} else {
 				sentAsNew = true
+				finalTextDelivered = true
+			}
+			if finalTextDelivered {
+				a.sendFinalAnswerFiles(ctx, tgTurn, session.conv.CWD, answer)
 			}
 			if sentAsNew && tgTurn.StatusMessageID != 0 {
 				if _, err := a.bot.DeleteMessage(ctx, &bot.DeleteMessageParams{

@@ -183,9 +183,10 @@ you send files without text, Dexgram stages them and attaches them to the next
 message in that chat. The same attachment handling applies when a prompt is
 queued behind an active Codex turn.
 
-When Codex reports files it created or edited, Dexgram tries to upload them back
-to the Telegram chat. Images are sent as photos; everything else is sent as a
-document.
+Dexgram does not upload files reported by intermediate tool calls, file edits,
+or image-generation events while Codex is working. If the final assistant answer
+explicitly links to a local file, Dexgram uploads that file after the final text
+answer. Images are sent as photos; everything else is sent as a document.
 
 ## License
 

@@ -131,7 +131,7 @@ Runtime Behavior
   Telegram photos/image documents are sent to Codex as localImage inputs.
   Generic documents are downloaded, mentioned, and included by absolute path.
   Attachment-only messages are staged and attached to the next text prompt.
-  Codex-created files are uploaded back to Telegram when detected.
+  Final-answer local file links are uploaded back to Telegram after the answer.
 
 Service Mode
 
