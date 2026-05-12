@@ -56,6 +56,9 @@ func run() error {
 		}
 		return err
 	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unknown command or argument %q; run %s --help", fs.Arg(0), filepath.Base(os.Args[0]))
+	}
 
 	closeLog, err := configureLogFile(logPath)
 	if err != nil {

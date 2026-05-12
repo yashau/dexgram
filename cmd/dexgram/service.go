@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -186,6 +187,7 @@ func serviceStatus() error {
 	fmt.Printf("log:    %s\n", mustServiceLogPath())
 	fmt.Printf("state:  %s\n", mustServiceStatePath())
 	fmt.Printf("startup fallback: %s\n\n", mustStartupEntryPath())
+	printDexgramRuntimeStatus()
 	out, err := runSchtasks("/Query", "/TN", serviceTaskName, "/FO", "LIST", "/V")
 	if err != nil {
 		if isTaskNotFound(out) {
@@ -294,6 +296,61 @@ func startDexgramDirect() error {
 
 func quoteCmdArg(value string) string {
 	return `"` + strings.ReplaceAll(value, `"`, `\"`) + `"`
+}
+
+func printDexgramRuntimeStatus() {
+	lines, err := runningDexgramProcesses()
+	if err != nil {
+		fmt.Printf("runtime: unknown (%v)\n\n", err)
+		return
+	}
+	if len(lines) == 0 {
+		fmt.Println("runtime: stopped")
+		fmt.Println()
+		return
+	}
+	fmt.Println("runtime: running")
+	for _, line := range lines {
+		fmt.Println("  " + line)
+	}
+	fmt.Println()
+}
+
+func runningDexgramProcesses() ([]string, error) {
+	script := `Get-Process -Name dexgram -ErrorAction SilentlyContinue | Select-Object Id,Path | ConvertTo-Json -Compress`
+	out, err := exec.Command("powershell.exe", "-NoProfile", "-Command", script).CombinedOutput()
+	text := strings.TrimSpace(string(out))
+	if err != nil && text != "" {
+		return nil, err
+	}
+	if text == "" {
+		return nil, nil
+	}
+	var raw any
+	if err := json.Unmarshal([]byte(text), &raw); err != nil {
+		return nil, err
+	}
+	var records []map[string]any
+	switch value := raw.(type) {
+	case []any:
+		for _, item := range value {
+			if record, ok := item.(map[string]any); ok {
+				records = append(records, record)
+			}
+		}
+	case map[string]any:
+		records = append(records, value)
+	}
+	var lines []string
+	for _, record := range records {
+		id := fmt.Sprint(record["Id"])
+		path := strings.TrimSpace(fmt.Sprint(record["Path"]))
+		if path == "" || path == "<nil>" {
+			path = "path unavailable"
+		}
+		lines = append(lines, "pid="+id+" path="+path)
+	}
+	return lines, nil
 }
 
 func servicePathWarnings(exePath, configPath string) []string {
