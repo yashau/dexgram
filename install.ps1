@@ -181,7 +181,12 @@ $env:Path = (($env:Path -split ';' | Where-Object { $_ }) + $binDir | Select-Obj
 if ($isUpdate) {
     Write-Host ""
     Write-Host "Dexgram updated."
-    Write-Host "Next: dexgram -check"
+    Write-Host "Starting Dexgram service..."
+    $process = Start-Process -FilePath $exePath -ArgumentList "service", "start" -NoNewWindow -Wait -PassThru
+    if ($process.ExitCode -ne 0) {
+        throw "dexgram service start failed with exit code $($process.ExitCode)."
+    }
+    Write-Host "Next: dexgram service status"
     Write-Host ""
     Write-DexgramUpdatePrompt
     return

@@ -55,6 +55,9 @@ Update later with:
 dexgram update
 ```
 
+After a successful update, the installer starts the Dexgram service again from
+the newly installed binary.
+
 ### Option 2: Manual Setup
 
 If you already have `dexgram.exe`, run onboarding yourself:

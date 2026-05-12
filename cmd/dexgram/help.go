@@ -58,7 +58,7 @@ Update
   %[1]s update
       Check GitHub for a newer release. If one exists, run the installer in
       update mode, replace %%LOCALAPPDATA%%\Dexgram\dexgram.exe, and skip
-      onboarding.
+      onboarding. After a successful update, start the Dexgram service.
 
 Config
 
