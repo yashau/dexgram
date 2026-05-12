@@ -18,6 +18,7 @@ type app struct {
 	bot         *bot.Bot
 	store       *state.Store
 	mu          sync.Mutex
+	projectsMu  sync.RWMutex
 	active      map[string]*activeTurn
 	actions     map[string]turnAction
 	approvals   map[string]*pendingApproval

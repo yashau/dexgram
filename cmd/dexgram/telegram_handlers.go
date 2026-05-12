@@ -227,7 +227,18 @@ func (a *app) handleProjectCommand(ctx context.Context, b *bot.Bot, msg *models.
 		return
 	}
 
-	matches := codexprojects.Match(a.projects, query, 6)
+	projects, err := a.refreshProjects()
+	if err != nil {
+		log.Printf("refresh Codex projects: %v", err)
+		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:          msg.Chat.ID,
+			MessageThreadID: msg.MessageThreadID,
+			Text:            "Could not refresh Codex projects: " + err.Error(),
+		})
+		return
+	}
+
+	matches := codexprojects.Match(projects, query, 6)
 	if len(matches) == 0 {
 		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:          msg.Chat.ID,
@@ -243,7 +254,7 @@ func (a *app) handleProjectCommand(ctx context.Context, b *bot.Bot, msg *models.
 
 	rows := make([][]models.InlineKeyboardButton, 0, len(matches))
 	for _, project := range matches {
-		index := a.projectIndex(project)
+		index := projectIndex(projects, project)
 		if index < 0 {
 			continue
 		}
@@ -548,7 +559,13 @@ func (a *app) handleNewCommand(ctx context.Context, b *bot.Bot, msg *models.Mess
 		parts := strings.SplitN(arg, ":", 2)
 		query := strings.TrimSpace(parts[0])
 		title = strings.TrimSpace(parts[1])
-		matches := codexprojects.Match(a.projects, query, 2)
+		projects, err := a.refreshProjects()
+		if err != nil {
+			log.Printf("refresh Codex projects: %v", err)
+			_, _ = b.SendMessage(ctx, &bot.SendMessageParams{ChatID: msg.Chat.ID, MessageThreadID: msg.MessageThreadID, Text: "Could not refresh Codex projects: " + err.Error()})
+			return
+		}
+		matches := codexprojects.Match(projects, query, 2)
 		if len(matches) == 1 {
 			projectName = matches[0].Name
 			cwd = matches[0].Path

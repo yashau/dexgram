@@ -12,7 +12,6 @@ import (
 	"unicode"
 
 	"dexgram/internal/codex"
-	"dexgram/internal/codexprojects"
 	"dexgram/internal/codexstate"
 	"dexgram/internal/state"
 
@@ -242,22 +241,6 @@ func appServerWorkingDir(conv state.Conversation) string {
 		return conv.CWD
 	}
 	return projectlessRoot()
-}
-
-func (a *app) projectByIndex(index int) (codexprojects.Project, bool) {
-	if index < 0 || index >= len(a.projects) {
-		return codexprojects.Project{}, false
-	}
-	return a.projects[index], true
-}
-
-func (a *app) projectIndex(project codexprojects.Project) int {
-	for i, candidate := range a.projects {
-		if strings.EqualFold(candidate.Path, project.Path) {
-			return i
-		}
-	}
-	return -1
 }
 
 func startTurn(ctx context.Context, c *codex.Client, threadID string, input []map[string]any, approvalPolicy, sandbox string) (string, error) {

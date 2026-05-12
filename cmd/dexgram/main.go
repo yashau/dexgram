@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"dexgram/internal/codexprojects"
 	"dexgram/internal/config"
 	"dexgram/internal/state"
 
@@ -92,11 +91,9 @@ func run() error {
 		actions:   map[string]turnAction{},
 		inputs:    map[string]*pendingInput{},
 	}
-	app.projects, err = codexprojects.Load()
-	if err != nil {
+	if _, err := app.refreshProjects(); err != nil {
 		return err
 	}
-	log.Printf("loaded %d Codex projects", len(app.projects))
 	tg, err := bot.New(cfg.Telegram.BotToken,
 		bot.WithDefaultHandler(app.handleUpdate),
 		bot.WithErrorsHandler(func(err error) {
