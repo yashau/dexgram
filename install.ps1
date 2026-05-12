@@ -73,13 +73,13 @@ try {
 $currentUserPath = [Environment]::GetEnvironmentVariable("Path", "User")
 $pathEntries = @($currentUserPath -split ';' | Where-Object { $_ })
 if ($pathEntries -notcontains $binDir) {
-    $newUserPath = (($pathEntries + $binDir) -join ';')
-    [Environment]::SetEnvironmentVariable("Path", $newUserPath, "User")
-    $env:Path = (($env:Path -split ';' | Where-Object { $_ }) + $binDir | Select-Object -Unique) -join ';'
-    Write-Host "Added $binDir to your user PATH."
+	$newUserPath = (($pathEntries + $binDir) -join ';')
+	[Environment]::SetEnvironmentVariable("Path", $newUserPath, "User")
+	Write-Host "Added $binDir to your user PATH."
 } else {
-    Write-Host "$binDir is already on your user PATH."
+	Write-Host "$binDir is already on your user PATH."
 }
+$env:Path = (($env:Path -split ';' | Where-Object { $_ }) + $binDir | Select-Object -Unique) -join ';'
 
 Write-Host ""
 Write-Host "Starting Dexgram onboarding..."
@@ -90,4 +90,4 @@ if ($process.ExitCode -ne 0) {
 
 Write-Host ""
 Write-Host "Dexgram installed."
-Write-Host "Next: `"$exePath`" -config `"$configPath`" -check"
+Write-Host "Next: dexgram -config `"$configPath`" -check"
