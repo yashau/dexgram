@@ -13,7 +13,7 @@ func turnControlMarkup(token string, queued bool) *models.InlineKeyboardMarkup {
 	if queued {
 		return &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{
 			{Text: "Steer", CallbackData: "st:" + token},
-			{Text: "Delete queued", CallbackData: "dq:" + token},
+			{Text: "Delete", CallbackData: "dq:" + token},
 		}}}
 	}
 	return &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{

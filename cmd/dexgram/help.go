@@ -120,7 +120,7 @@ Runtime Behavior
   with buttons:
 
     Steer          merge that queued input into the active turn
-    Delete queued  cancel that queued Codex turn
+    Delete         cancel that queued Codex turn
 
   Each Codex turn is presented as:
 

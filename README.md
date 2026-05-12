@@ -191,7 +191,7 @@ replies to the queued Telegram message with two buttons:
 
 - `Steer` merges that queued input into the currently active Codex turn, then
   deletes the queued turn.
-- `Delete queued` cancels the queued Codex turn without steering it.
+- `Delete` cancels the queued Codex turn without steering it.
 
 The `/steer <message>` command is the text-command version of steering: it sends
 that message directly into the active Codex turn.
