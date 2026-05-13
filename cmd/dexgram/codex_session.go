@@ -64,7 +64,7 @@ func (a *app) startTopicSession(ctx context.Context, key string, chatID int64, m
 	if !a.registerSession(key, session) {
 		cancel()
 		_ = c.Close()
-		return nil, fmt.Errorf("Codex is already running in this topic")
+		return nil, fmt.Errorf("codex is already running in this topic")
 	}
 	go a.collectTopicSession(sessionCtx, key, session)
 	return session, nil

@@ -31,7 +31,9 @@ func (a *app) handleSyncCommand(ctx context.Context, b *bot.Bot, msg *models.Mes
 		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{ChatID: msg.Chat.ID, MessageThreadID: msg.MessageThreadID, Text: "Could not start Codex app-server: " + err.Error()})
 		return
 	}
-	defer c.Close()
+	defer func() {
+		_ = c.Close()
+	}()
 	go func() {
 		for err := range c.Errors() {
 			log.Printf("codex app-server: %v", err)

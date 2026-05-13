@@ -43,7 +43,7 @@ func runOnboardCommand(args []string) error {
 }
 
 func printOnboardHelp(w io.Writer, exe string) {
-	fmt.Fprintf(w, `Dexgram Onboarding
+	_, _ = fmt.Fprintf(w, `Dexgram Onboarding
 
 Usage
 
@@ -66,8 +66,8 @@ func runOnboard(in io.Reader, out io.Writer, path string) error {
 		return err
 	}
 
-	fmt.Fprintln(out, "Dexgram onboarding")
-	fmt.Fprintf(out, "Config: %s\n\n", path)
+	_, _ = fmt.Fprintln(out, "Dexgram onboarding")
+	_, _ = fmt.Fprintf(out, "Config: %s\n\n", path)
 
 	botToken, err := promptRequired(reader, out, "Telegram bot token/id from @BotFather", cfg.Telegram.BotToken)
 	if err != nil {
@@ -91,12 +91,12 @@ func runOnboard(in io.Reader, out io.Writer, path string) error {
 		return err
 	}
 
-	fmt.Fprintln(out)
-	fmt.Fprintf(out, "Wrote %s\n", path)
+	_, _ = fmt.Fprintln(out)
+	_, _ = fmt.Fprintf(out, "Wrote %s\n", path)
 	if cfg.Telegram.ChatID == 0 {
-		fmt.Fprintln(out, "telegram.chat_id is still 0. Run Dexgram once, DM the bot, then copy the logged chat_id into the config.")
+		_, _ = fmt.Fprintln(out, "telegram.chat_id is still 0. Run Dexgram once, DM the bot, then copy the logged chat_id into the config.")
 	}
-	fmt.Fprintf(out, "Next: %s -check\n", filepath.Base(os.Args[0]))
+	_, _ = fmt.Fprintf(out, "Next: %s -check\n", filepath.Base(os.Args[0]))
 	return nil
 }
 
@@ -133,9 +133,9 @@ func applyOnboardDefaults(cfg *config.Config) {
 func promptRequired(reader *bufio.Reader, out io.Writer, label, current string) (string, error) {
 	for {
 		if current == "" {
-			fmt.Fprintf(out, "%s: ", label)
+			_, _ = fmt.Fprintf(out, "%s: ", label)
 		} else {
-			fmt.Fprintf(out, "%s [%s]: ", label, maskToken(current))
+			_, _ = fmt.Fprintf(out, "%s [%s]: ", label, maskToken(current))
 		}
 		value, err := readPromptLine(reader)
 		if err != nil {
@@ -148,7 +148,7 @@ func promptRequired(reader *bufio.Reader, out io.Writer, label, current string) 
 		if value != "" {
 			return value, nil
 		}
-		fmt.Fprintln(out, "Please enter a value.")
+		_, _ = fmt.Fprintln(out, "Please enter a value.")
 	}
 }
 
@@ -158,16 +158,16 @@ func promptChoice(reader *bufio.Reader, out io.Writer, label string, choices []o
 		defaultIndex = 0
 	}
 	for {
-		fmt.Fprintln(out)
-		fmt.Fprintf(out, "%s:\n", label)
+		_, _ = fmt.Fprintln(out)
+		_, _ = fmt.Fprintf(out, "%s:\n", label)
 		for i, choice := range choices {
 			suffix := ""
 			if i == defaultIndex {
 				suffix = " (default)"
 			}
-			fmt.Fprintf(out, "  %d) %s%s - %s\n", i+1, choice.Value, suffix, choice.Label)
+			_, _ = fmt.Fprintf(out, "  %d) %s%s - %s\n", i+1, choice.Value, suffix, choice.Label)
 		}
-		fmt.Fprintf(out, "Choose 1-%d [%d]: ", len(choices), defaultIndex+1)
+		_, _ = fmt.Fprintf(out, "Choose 1-%d [%d]: ", len(choices), defaultIndex+1)
 		value, err := readPromptLine(reader)
 		if err != nil {
 			return "", err
@@ -181,7 +181,7 @@ func promptChoice(reader *bufio.Reader, out io.Writer, label string, choices []o
 		if idx := choiceIndex(choices, value); idx >= 0 {
 			return choices[idx].Value, nil
 		}
-		fmt.Fprintf(out, "Please choose a number from 1 to %d, or enter one of the shown values.\n", len(choices))
+		_, _ = fmt.Fprintf(out, "Please choose a number from 1 to %d, or enter one of the shown values.\n", len(choices))
 	}
 }
 

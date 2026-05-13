@@ -147,7 +147,9 @@ func (a *app) downloadTelegramFile(ctx context.Context, b *bot.Bot, fileID, name
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", fmt.Errorf("telegram file download returned HTTP %d", resp.StatusCode)
 	}
@@ -155,7 +157,9 @@ func (a *app) downloadTelegramFile(ctx context.Context, b *bot.Bot, fileID, name
 	if err != nil {
 		return "", err
 	}
-	defer out.Close()
+	defer func() {
+		_ = out.Close()
+	}()
 	if _, err := io.Copy(out, resp.Body); err != nil {
 		return "", err
 	}
@@ -184,7 +188,9 @@ func (a *app) sendOutputFile(ctx context.Context, turn *telegramTurn, path strin
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 	file := &models.InputFileUpload{Filename: filepath.Base(path), Data: f}
 	if isImagePath(path) {
 		_, err = a.bot.SendPhoto(ctx, &bot.SendPhotoParams{

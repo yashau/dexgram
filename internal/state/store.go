@@ -183,7 +183,9 @@ ORDER BY id`, chatID, messageThreadID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 	var out []StagedAttachment
 	for rows.Next() {
 		var attachment StagedAttachment

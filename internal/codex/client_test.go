@@ -47,7 +47,9 @@ func TestResolveCodexPathFallsBackToLocalAppDataInstall(t *testing.T) {
 
 func TestClientCallWritesRequestAndReceivesResult(t *testing.T) {
 	client, stdinReader, stdoutWriter := newPipeClient(t)
-	defer stdoutWriter.Close()
+	defer func() {
+		_ = stdoutWriter.Close()
+	}()
 
 	done := make(chan error, 1)
 	go func() {
@@ -88,7 +90,9 @@ func TestClientCallWritesRequestAndReceivesResult(t *testing.T) {
 
 func TestClientCallReturnsRPCErrorAndForgetsPending(t *testing.T) {
 	client, stdinReader, stdoutWriter := newPipeClient(t)
-	defer stdoutWriter.Close()
+	defer func() {
+		_ = stdoutWriter.Close()
+	}()
 
 	go func() {
 		req, err := readRPCLine(stdinReader)
@@ -109,8 +113,12 @@ func TestClientCallReturnsRPCErrorAndForgetsPending(t *testing.T) {
 
 func TestClientCallForgetsPendingOnContextCancel(t *testing.T) {
 	client, stdinReader, stdoutWriter := newPipeClient(t)
-	defer stdoutWriter.Close()
-	defer stdinReader.Close()
+	defer func() {
+		_ = stdoutWriter.Close()
+	}()
+	defer func() {
+		_ = stdinReader.Close()
+	}()
 
 	go func() {
 		_, _ = readRPCLine(stdinReader)
@@ -128,7 +136,9 @@ func TestClientCallForgetsPendingOnContextCancel(t *testing.T) {
 
 func TestClientRoutesEvents(t *testing.T) {
 	client, _, stdoutWriter := newPipeClient(t)
-	defer stdoutWriter.Close()
+	defer func() {
+		_ = stdoutWriter.Close()
+	}()
 
 	_, err := io.WriteString(stdoutWriter, `{"method":"turn/completed","params":{"threadId":"thread-1"}}`+"\n")
 	if err != nil {
@@ -147,7 +157,9 @@ func TestClientRoutesEvents(t *testing.T) {
 
 func TestClientHandlesServerRequests(t *testing.T) {
 	client, stdinReader, stdoutWriter := newPipeClient(t)
-	defer stdoutWriter.Close()
+	defer func() {
+		_ = stdoutWriter.Close()
+	}()
 	client.SetServerRequestHandler(func(_ context.Context, req ServerRequest) (any, error) {
 		if req.Method != "approval/request" {
 			t.Fatalf("unexpected method %q", req.Method)

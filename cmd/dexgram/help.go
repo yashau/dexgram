@@ -13,7 +13,7 @@ func printHelp(w io.Writer, exe string, fs *flag.FlagSet) {
 	if err != nil {
 		statePath = "%APPDATA%\\Dexgram\\dexgram.db"
 	}
-	fmt.Fprintf(w, `Dexgram
+	_, _ = fmt.Fprintf(w, `Dexgram
 
   Telegram bridge for Codex Desktop / Codex app-server threads.
   It runs as a single Windows binary, listens to a private Telegram bot chat
@@ -33,7 +33,7 @@ Options
 
 `, exe)
 	fs.PrintDefaults()
-	fmt.Fprintf(w, `
+	_, _ = fmt.Fprintf(w, `
 Setup
 
   1. Run %[1]s onboard to create %%APPDATA%%\Dexgram\dexgram.toml.
