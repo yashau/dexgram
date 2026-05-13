@@ -233,10 +233,26 @@ func approvalText(method string, params approvalRequestParams) string {
 	if strings.TrimSpace(params.Reason) != "" {
 		parts = append(parts, "Reason: "+strings.TrimSpace(params.Reason))
 	}
-	if strings.TrimSpace(params.Command) != "" {
-		parts = append(parts, "Command:\n"+truncateMiddle(params.Command, 900))
+	if command := approvalCommand(params); command != "" {
+		parts = append(parts, "Command:\n"+truncateMiddle(command, 900))
+	}
+	if strings.TrimSpace(params.GrantRoot) != "" {
+		parts = append(parts, "Requested writable root: "+strings.TrimSpace(params.GrantRoot))
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+func approvalCommand(params approvalRequestParams) string {
+	var commands []string
+	for _, action := range params.CommandActions {
+		if command := strings.TrimSpace(action.Command); command != "" {
+			commands = append(commands, command)
+		}
+	}
+	if len(commands) > 0 {
+		return strings.Join(commands, " && ")
+	}
+	return strings.TrimSpace(params.Command)
 }
 
 func permissionText(params permissionRequestParams) string {

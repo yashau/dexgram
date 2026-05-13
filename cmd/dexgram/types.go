@@ -94,7 +94,11 @@ type inputDecision struct {
 }
 
 type approvalRequestParams struct {
-	Reason                      string   `json:"reason"`
-	Command                     string   `json:"command"`
+	Reason         string `json:"reason"`
+	Command        string `json:"command"`
+	CommandActions []struct {
+		Command string `json:"command"`
+	} `json:"commandActions"`
+	GrantRoot                   string   `json:"grantRoot"`
 	ProposedExecpolicyAmendment []string `json:"proposedExecpolicyAmendment"`
 }

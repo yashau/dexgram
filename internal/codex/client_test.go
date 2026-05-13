@@ -156,6 +156,36 @@ func TestClientRoutesEvents(t *testing.T) {
 	}
 }
 
+func TestClientRoutesEventWithRawNewlineInJSONString(t *testing.T) {
+	client, _, stdoutWriter := newPipeClient(t)
+	defer func() {
+		_ = stdoutWriter.Close()
+	}()
+
+	_, err := io.WriteString(stdoutWriter, "{\"method\":\"item/commandExecution/outputDelta\",\"params\":{\"turnId\":\"turn-1\",\"delta\":\"first\nsecond\"}}\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case msg := <-client.events:
+		if msg.Method != "item/commandExecution/outputDelta" {
+			t.Fatalf("unexpected method: %s", msg.Method)
+		}
+		var params struct {
+			Delta string `json:"delta"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			t.Fatal(err)
+		}
+		if params.Delta != "first\nsecond" {
+			t.Fatalf("unexpected delta: %q", params.Delta)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for event")
+	}
+}
+
 func TestClientHandlesServerRequests(t *testing.T) {
 	client, stdinReader, stdoutWriter := newPipeClient(t)
 	defer func() {

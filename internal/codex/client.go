@@ -17,6 +17,8 @@ import (
 )
 
 const maxAppServerStderrLineLen = 2000
+const maxAppServerParseBufferLen = 1024 * 1024
+const maxAppServerParseBufferLines = 1000
 
 var ansiEscapePattern = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
 
@@ -66,6 +68,12 @@ type ServerRequestHandler func(context.Context, ServerRequest) (any, error)
 type StartOptions struct {
 	CLIPath    string
 	WorkingDir string
+}
+
+type pendingParse struct {
+	text      string
+	lineCount int
+	firstErr  error
 }
 
 func StartStdio(ctx context.Context) (*Client, error) {
@@ -260,30 +268,30 @@ func (c *Client) readStdout() {
 	scanner := bufio.NewScanner(c.stdout)
 	buf := make([]byte, 0, 1024*1024)
 	scanner.Buffer(buf, 16*1024*1024)
+	var pending *pendingParse
 	for scanner.Scan() {
-		line := scanner.Bytes()
-		var msg rpcMessage
-		if err := json.Unmarshal(line, &msg); err != nil {
-			c.reportError(fmt.Errorf("decode app-server line: %w", err))
-			continue
-		}
-		if msg.ID != nil {
-			if msg.Method != "" {
-				c.handleServerRequest(*msg.ID, msg.Method, msg.Params)
+		line := strings.TrimSuffix(scanner.Text(), "\r")
+		if pending != nil {
+			msg, nextPending, err, ok := parsePendingAppServerLine(pending, line)
+			pending = nextPending
+			if err != nil {
+				c.reportError(err)
+			}
+			if !ok {
 				continue
 			}
-			c.mu.Lock()
-			ch := c.pending[*msg.ID]
-			delete(c.pending, *msg.ID)
-			c.mu.Unlock()
-			if ch != nil {
-				ch <- msg
-			}
+			c.handleStdoutMessage(msg)
 			continue
 		}
-		if msg.Method != "" {
-			c.events <- msg
+		msg, nextPending, err, ok := parseAppServerLine(line)
+		pending = nextPending
+		if err != nil {
+			c.reportError(err)
 		}
+		if !ok {
+			continue
+		}
+		c.handleStdoutMessage(msg)
 	}
 	if err := scanner.Err(); err != nil {
 		if !isExpectedAppServerPipeClose(err) {
@@ -295,6 +303,63 @@ func (c *Client) readStdout() {
 		}
 	}
 	close(c.events)
+}
+
+func parseAppServerLine(line string) (rpcMessage, *pendingParse, error, bool) {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return rpcMessage{}, nil, nil, false
+	}
+	var msg rpcMessage
+	if err := json.Unmarshal([]byte(trimmed), &msg); err != nil {
+		if shouldBufferAppServerParseFailure(trimmed, err) {
+			return rpcMessage{}, &pendingParse{text: trimmed, lineCount: 1, firstErr: err}, nil, false
+		}
+		return rpcMessage{}, nil, fmt.Errorf("decode app-server line: %w", err), false
+	}
+	return msg, nil, nil, true
+}
+
+func parsePendingAppServerLine(pending *pendingParse, line string) (rpcMessage, *pendingParse, error, bool) {
+	candidate := pending.text + `\n` + line
+	var msg rpcMessage
+	if err := json.Unmarshal([]byte(candidate), &msg); err != nil {
+		lineCount := pending.lineCount + 1
+		if len(candidate) <= maxAppServerParseBufferLen && lineCount <= maxAppServerParseBufferLines {
+			return rpcMessage{}, &pendingParse{text: candidate, lineCount: lineCount, firstErr: pending.firstErr}, nil, false
+		}
+		return rpcMessage{}, nil, fmt.Errorf("decode buffered app-server line after %d fragments: %w", lineCount, err), false
+	}
+	return msg, nil, nil, true
+}
+
+func shouldBufferAppServerParseFailure(line string, err error) bool {
+	if !strings.HasPrefix(line, "{") && !strings.HasPrefix(line, "[") {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "unexpected end of JSON input") ||
+		strings.Contains(msg, "invalid character") && strings.Contains(msg, "in string literal")
+}
+
+func (c *Client) handleStdoutMessage(msg rpcMessage) {
+	if msg.ID != nil {
+		if msg.Method != "" {
+			c.handleServerRequest(*msg.ID, msg.Method, msg.Params)
+			return
+		}
+		c.mu.Lock()
+		ch := c.pending[*msg.ID]
+		delete(c.pending, *msg.ID)
+		c.mu.Unlock()
+		if ch != nil {
+			ch <- msg
+		}
+		return
+	}
+	if msg.Method != "" {
+		c.events <- msg
+	}
 }
 
 func isExpectedAppServerPipeClose(err error) bool {

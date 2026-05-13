@@ -18,6 +18,25 @@ func TestApprovalTextIncludesRelevantDetails(t *testing.T) {
 	assertContains(t, got, "Command:\ngo test ./...")
 }
 
+func TestApprovalTextPrefersCommandActions(t *testing.T) {
+	got := approvalText("item/commandExecution/requestApproval", approvalRequestParams{
+		Command: "powershell -Command \"git status\"",
+		CommandActions: []struct {
+			Command string `json:"command"`
+		}{
+			{Command: "git status"},
+			{Command: "go test ./..."},
+		},
+		GrantRoot: `C:\work\dexgram`,
+	})
+
+	assertContains(t, got, "Command:\ngit status && go test ./...")
+	if strings.Contains(got, "powershell -Command") {
+		t.Fatalf("approval text used raw shell wrapper: %s", got)
+	}
+	assertContains(t, got, `Requested writable root: C:\work\dexgram`)
+}
+
 func TestPermissionTextIncludesReasonCWDAndPermissions(t *testing.T) {
 	reason := "needs workspace write"
 	got := permissionText(permissionRequestParams{
