@@ -88,13 +88,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
         run: |
-          gh release view $env:TAG --repo $env:GITHUB_REPOSITORY *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $release = gh release list --repo $env:GITHUB_REPOSITORY --limit 100 --json tagName |
+            ConvertFrom-Json |
+            Where-Object { $_.tagName -eq $env:TAG } |
+            Select-Object -First 1
+          if ($release) {
             "exists=true" >> $env:GITHUB_OUTPUT
             Write-Host "Release $env:TAG already exists; skipping build and publish."
           } else {
-            git ls-remote --exit-code --tags origin "refs/tags/$env:TAG" *> $null
-            if ($LASTEXITCODE -eq 0) {
+            $tag = git ls-remote --tags origin "refs/tags/$env:TAG"
+            if ($tag) {
               throw "Tag $env:TAG exists but no GitHub release exists."
             }
             "exists=false" >> $env:GITHUB_OUTPUT
