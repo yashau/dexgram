@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -22,6 +23,8 @@ import (
 
 	"github.com/go-telegram/bot"
 )
+
+const logFileMaxLines = 5000
 
 func main() {
 	exitCode := 0
@@ -173,7 +176,7 @@ func configureLogFile(path string) (func(), error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("create log directory: %w", err)
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	f, err := openLineLimitedLogFile(path, logFileMaxLines)
 	if err != nil {
 		return nil, fmt.Errorf("open log file %s: %w", path, err)
 	}
@@ -182,6 +185,170 @@ func configureLogFile(path string) (func(), error) {
 		log.SetOutput(os.Stderr)
 		_ = f.Close()
 	}, nil
+}
+
+type lineLimitedLogFile struct {
+	path      string
+	maxLines  int
+	file      *os.File
+	lineCount int
+}
+
+func openLineLimitedLogFile(path string, maxLines int) (*lineLimitedLogFile, error) {
+	if err := trimLogFileLines(path, maxLines); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	lineCount, err := countLogFileLines(path)
+	if err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	return &lineLimitedLogFile{
+		path:      path,
+		maxLines:  maxLines,
+		file:      f,
+		lineCount: lineCount,
+	}, nil
+}
+
+func (f *lineLimitedLogFile) Write(p []byte) (int, error) {
+	n, err := f.file.Write(p)
+	if n <= 0 || f.maxLines <= 0 {
+		return n, err
+	}
+	f.lineCount += countTextLines(p[:n])
+	if f.lineCount <= f.maxLines {
+		return n, err
+	}
+	if trimErr := f.trim(); err == nil {
+		err = trimErr
+	}
+	return n, err
+}
+
+func (f *lineLimitedLogFile) Close() error {
+	return f.file.Close()
+}
+
+func (f *lineLimitedLogFile) trim() error {
+	closeErr := f.file.Close()
+	trimErr := trimLogFileLines(f.path, f.maxLines)
+	reopened, reopenErr := os.OpenFile(f.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if reopenErr == nil {
+		f.file = reopened
+		if lineCount, err := countLogFileLines(f.path); err == nil {
+			f.lineCount = lineCount
+		} else {
+			f.lineCount = f.maxLines
+			reopenErr = err
+		}
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if trimErr != nil {
+		return trimErr
+	}
+	return reopenErr
+}
+
+func trimLogFileLines(path string, maxLines int) error {
+	if maxLines <= 0 {
+		return nil
+	}
+	in, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	reader := bufio.NewReader(in)
+	ring := make([]string, maxLines)
+	lineCount := 0
+	for {
+		line, readErr := reader.ReadString('\n')
+		if line != "" {
+			ring[lineCount%maxLines] = line
+			lineCount++
+		}
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
+		if readErr != nil {
+			_ = in.Close()
+			return readErr
+		}
+	}
+	if err := in.Close(); err != nil {
+		return err
+	}
+	if lineCount <= maxLines {
+		return nil
+	}
+
+	out, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = out.Close()
+	}()
+	start := lineCount % maxLines
+	for i := 0; i < maxLines; i++ {
+		if _, err := io.WriteString(out, ring[(start+i)%maxLines]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func countLogFileLines(path string) (int, error) {
+	f, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		_ = f.Close()
+	}()
+	reader := bufio.NewReader(f)
+	lineCount := 0
+	for {
+		line, readErr := reader.ReadString('\n')
+		if line != "" {
+			lineCount++
+		}
+		if errors.Is(readErr, io.EOF) {
+			return lineCount, nil
+		}
+		if readErr != nil {
+			return 0, readErr
+		}
+	}
+}
+
+func countTextLines(text []byte) int {
+	if len(text) == 0 {
+		return 0
+	}
+	lines := 0
+	for _, b := range text {
+		if b == '\n' {
+			lines++
+		}
+	}
+	if text[len(text)-1] != '\n' {
+		lines++
+	}
+	return lines
 }
 
 func reportFatalError(err error) {
@@ -223,14 +390,16 @@ func appendFatalLog(path, message string) {
 		fmt.Fprintf(os.Stderr, "error: write fatal log: %v\n", err)
 		return
 	}
-	defer func() {
-		if err := f.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "error: close fatal log: %v\n", err)
-		}
-	}()
 	timestamp := time.Now().Format("2006/01/02 15:04:05")
 	if _, err := fmt.Fprintf(f, "%s %s", timestamp, message); err != nil {
 		fmt.Fprintf(os.Stderr, "error: write fatal log: %v\n", err)
+	}
+	if err := f.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: close fatal log: %v\n", err)
+		return
+	}
+	if err := trimLogFileLines(path, logFileMaxLines); err != nil {
+		fmt.Fprintf(os.Stderr, "error: trim fatal log: %v\n", err)
 	}
 }
 

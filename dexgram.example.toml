@@ -12,6 +12,8 @@
 #   Logs:   %APPDATA%\Dexgram\dexgram.log
 #   State:  %APPDATA%\Dexgram\dexgram.db
 #
+# The service log keeps the newest 5000 lines.
+#
 # Install/manage it with:
 #
 #   dexgram service install

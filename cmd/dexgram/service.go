@@ -70,8 +70,9 @@ Behavior
 
 The installer script can place dexgram.exe under %%LOCALAPPDATA%%\Dexgram.
 Config, logs, media, and state live under %%APPDATA%%\Dexgram.
+The service log keeps the newest %[7]d lines.
 
-`, exe, mustServiceExePath(), mustServiceConfigPath(), mustServiceLogPath(), mustServiceStatePath(), serviceTaskName)
+`, exe, mustServiceExePath(), mustServiceConfigPath(), mustServiceLogPath(), mustServiceStatePath(), serviceTaskName, logFileMaxLines)
 }
 
 func serviceInstall() error {

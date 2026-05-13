@@ -153,6 +153,8 @@ Service Mode
     Logs:   %%APPDATA%%\Dexgram\dexgram.log
     State:  %%APPDATA%%\Dexgram\dexgram.db
 
+  The service log keeps the newest %[3]d lines.
+
   Commands:
     %[1]s service install
     %[1]s service start
@@ -187,5 +189,5 @@ Notes
   Codex through app-server and relies on Codex's persisted session history so
   Desktop can resume the same threads.
 
-`, exe, statePath)
+`, exe, statePath, logFileMaxLines)
 }

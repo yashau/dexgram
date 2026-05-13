@@ -167,6 +167,9 @@ Logs:   %APPDATA%\Dexgram\dexgram.log
 State:  %APPDATA%\Dexgram\dexgram.db
 ```
 
+The service log keeps the newest 5000 lines so background runs do not grow the
+log indefinitely.
+
 ## Telegram Commands
 
 - `/new [title]` creates a new Telegram topic for a Codex chat.
