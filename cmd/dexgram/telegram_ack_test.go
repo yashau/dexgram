@@ -21,6 +21,52 @@ func TestPickTelegramAckReaction(t *testing.T) {
 	}
 }
 
+func TestShouldAckTelegramMessage(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  *models.Message
+		want bool
+	}{
+		{
+			name: "nil",
+			want: false,
+		},
+		{
+			name: "empty",
+			msg:  &models.Message{ID: 1},
+			want: false,
+		},
+		{
+			name: "text",
+			msg:  &models.Message{ID: 1, Text: "hello"},
+			want: true,
+		},
+		{
+			name: "caption",
+			msg:  &models.Message{ID: 1, Caption: "look"},
+			want: true,
+		},
+		{
+			name: "attachment",
+			msg:  &models.Message{ID: 1, Photo: []models.PhotoSize{{FileID: "photo"}}},
+			want: true,
+		},
+		{
+			name: "topic rename service message",
+			msg:  &models.Message{ID: 1, ForumTopicEdited: &models.ForumTopicEdited{Name: "new name"}},
+			want: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := shouldAckTelegramMessage(test.msg); got != test.want {
+				t.Fatalf("shouldAckTelegramMessage() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestTelegramEmojiReactionMarshals(t *testing.T) {
 	reaction := telegramEmojiReaction("🗿")
 	data, err := json.Marshal([]any{&reaction})

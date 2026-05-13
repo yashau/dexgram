@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -18,7 +19,7 @@ var (
 )
 
 func ackTelegramMessage(ctx context.Context, b *bot.Bot, msg *models.Message) {
-	if b == nil || msg == nil || msg.ID == 0 {
+	if b == nil || !shouldAckTelegramMessage(msg) {
 		return
 	}
 
@@ -41,6 +42,16 @@ func ackTelegramMessage(ctx context.Context, b *bot.Bot, msg *models.Message) {
 			log.Printf("telegram ack reaction failed chat_id=%d message_id=%d reaction=%q: %v", chatID, messageID, reaction, err)
 		}
 	}()
+}
+
+func shouldAckTelegramMessage(msg *models.Message) bool {
+	if msg == nil || msg.ID == 0 {
+		return false
+	}
+	if strings.TrimSpace(msg.Text) != "" || strings.TrimSpace(msg.Caption) != "" {
+		return true
+	}
+	return messageHasAttachment(msg)
 }
 
 func nextTelegramAckReaction() string {
