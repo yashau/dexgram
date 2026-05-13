@@ -38,6 +38,7 @@ func (a *app) handleUpdate(ctx context.Context, b *bot.Bot, update *models.Updat
 		log.Printf("ignored message from chat_id=%d thread_id=%d", msg.Chat.ID, msg.MessageThreadID)
 		return
 	}
+	ackTelegramMessage(ctx, b, msg)
 
 	text := msg.Text
 	if text == "" {

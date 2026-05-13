@@ -7,7 +7,7 @@ import (
 	"io"
 )
 
-const appVersion = "0.2.1"
+const appVersion = "0.2.2"
 
 func printVersion(w io.Writer) {
 	_, _ = fmt.Fprintf(w, "Dexgram %s\n", appVersion)
