@@ -10,13 +10,11 @@ Dexgram is a Windows Telegram bridge for Desktop. It runs as a single
 Windows binary, listens to a private Telegram bot chat with threaded topics
 enabled, and maps each Telegram topic to a Codex thread.
 
-Unlike most other Codex-to-Telegram bridges, Dexgram is specifically built around
-Desktop's app-server instead of shelling out through the Codex CLI. That gives
-Telegram the same rich Codex stream Desktop sees: assistant messages, live
-run-log updates, tool activity, file edits, final answers, and interruption
-support. Telegram chats created through Dexgram are registered in Desktop's chat
-history, so you can start or continue a conversation from Telegram and then pick
-it up again in Desktop.
+Unlike most other Codex-to-Telegram bridges, Dexgram talks directly to
+Desktop's app-server instead of shelling out through the Codex CLI. That is the
+important difference: Telegram gets the rich Codex stream Desktop sees, with
+assistant messages, live run-log updates, tool activity, file edits, final
+answers, and interruption support.
 
 ## Features
 
@@ -26,8 +24,8 @@ it up again in Desktop.
   move between Telegram and the desktop app.
 - Supports project-bound chats with fuzzy Desktop project matching and
   inline selection buttons for ambiguous matches.
-- Creates dated one-off workspaces for projectless chats, matching Codex
-  Desktop's "Don't work in a project" flow.
+- Creates dated one-off workspaces for projectless chats, matching Desktop's
+  "Don't work in a project" flow.
 - Mirrors Codex progress back to Telegram with initial replies, live run-log
   updates, final answers, and a Stop button for active turns.
 - Queues new Telegram messages while Codex is busy, with inline controls to
