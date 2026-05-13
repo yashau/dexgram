@@ -32,20 +32,7 @@ func reconcileCommands(ctx context.Context, b *bot.Bot, chatID int64) error {
 		return errors.Join(errs...)
 	}
 
-	commands := []models.BotCommand{
-		{Command: "project", Description: "Set the Codex project before this chat starts"},
-		{Command: "new", Description: "Create a new Telegram topic for a Codex chat"},
-		{Command: "status", Description: "Show this topic's Dexgram mapping and turn state"},
-		{Command: "sync", Description: "Mirror completed Codex turns into this topic"},
-		{Command: "steer", Description: "Steer the active Codex turn"},
-		{Command: "goal", Description: "Set the Codex goal for this topic"},
-		{Command: "plan", Description: "Start a Codex Plan Mode turn"},
-		{Command: "settings", Description: "Show Telegram-started Plan Mode settings"},
-		{Command: "model", Description: "Choose the model for Plan Mode"},
-		{Command: "effort", Description: "Choose the reasoning effort for Plan Mode"},
-		{Command: "stop", Description: "Stop the active Codex turn"},
-		{Command: "cancel", Description: "Alias for /stop"},
-	}
+	commands := telegramCommands()
 	if _, err := b.SetMyCommands(ctx, &bot.SetMyCommandsParams{
 		Commands: commands,
 		Scope:    &models.BotCommandScopeDefault{},
@@ -61,6 +48,24 @@ func reconcileCommands(ctx context.Context, b *bot.Bot, chatID int64) error {
 		}
 	}
 	return nil
+}
+
+func telegramCommands() []models.BotCommand {
+	return []models.BotCommand{
+		{Command: "project", Description: "Set the Codex project before this chat starts"},
+		{Command: "new", Description: "Create a new Telegram topic for a Codex chat"},
+		{Command: "status", Description: "Show this topic's Dexgram mapping and turn state"},
+		{Command: "sync", Description: "Mirror completed Codex turns into this topic"},
+		{Command: "update", Description: "Update Dexgram and restart the bridge"},
+		{Command: "steer", Description: "Steer the active Codex turn"},
+		{Command: "goal", Description: "Set the Codex goal for this topic"},
+		{Command: "plan", Description: "Start a Codex Plan Mode turn"},
+		{Command: "settings", Description: "Show Telegram-started Plan Mode settings"},
+		{Command: "model", Description: "Choose the model for Plan Mode"},
+		{Command: "effort", Description: "Choose the reasoning effort for Plan Mode"},
+		{Command: "stop", Description: "Stop the active Codex turn"},
+		{Command: "cancel", Description: "Alias for /stop"},
+	}
 }
 
 func ensureThreadedMode(ctx context.Context, b *bot.Bot, me *models.User, chatID int64) error {

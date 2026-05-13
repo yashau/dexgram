@@ -114,6 +114,7 @@ func run() error {
 	app := &app{
 		cfg:                   cfg,
 		store:                 store,
+		logPath:               logPath,
 		active:                map[string]*activeTurn{},
 		approvals:             map[string]*pendingApproval{},
 		actions:               map[string]turnAction{},
@@ -153,6 +154,10 @@ func run() error {
 	if checkOnly {
 		log.Printf("telegram setup check passed")
 		return nil
+	}
+
+	if err := app.sendPendingUpdateNotice(ctx, tg); err != nil {
+		log.Printf("send pending update notice: %v", err)
 	}
 
 	if cfg.Telegram.ChatID == 0 {

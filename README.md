@@ -105,6 +105,9 @@ Update later with:
 dexgram update
 ```
 
+You can also update from Telegram with `/update`. Dexgram posts before it
+restarts and posts again in the same topic after the updated bridge comes back.
+
 Print the installed Dexgram version with:
 
 ```powershell
@@ -190,6 +193,7 @@ log indefinitely.
   if multiple projects match, Dexgram shows inline selection buttons.
 - `/status` shows the topic's Dexgram mapping and active turn state.
 - `/sync` mirrors new completed Codex turns for chats Dexgram already created.
+- `/update` updates Dexgram and restarts the bridge.
 - `/steer <message>` steers the currently active Codex turn.
 - `/goal <objective>` sets the native Codex goal for the topic. As of writing,
   goals must be enabled in your Codex config first:

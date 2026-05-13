@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -23,11 +25,7 @@ func runUpdateCommand() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	latest, err := latestReleaseTag(ctx)
-	if err != nil {
-		return err
-	}
-	cmp, err := compareVersions(appVersion, latest)
+	latest, cmp, err := latestUpdateComparison(ctx, appVersion)
 	if err != nil {
 		return err
 	}
@@ -38,16 +36,73 @@ func runUpdateCommand() error {
 	}
 
 	fmt.Printf("Updating Dexgram %s -> %s...\n\n", appVersion, strings.TrimPrefix(latest, "v"))
-	script := fmt.Sprintf(
+	return runUpdateScript(os.Getpid(), os.Stdin, os.Stdout, os.Stderr)
+}
+
+func latestUpdateComparison(ctx context.Context, current string) (string, int, error) {
+	latest, err := latestReleaseTag(ctx)
+	if err != nil {
+		return "", 0, err
+	}
+	cmp, err := compareVersions(current, latest)
+	if err != nil {
+		return "", 0, err
+	}
+	return latest, cmp, nil
+}
+
+func runUpdateScript(parentPID int, stdin io.Reader, stdout, stderr io.Writer) error {
+	script := updatePowerShellScript(parentPID)
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
+	cmd.Stdin = stdin
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	return cmd.Run()
+}
+
+func startUpdateProcess(logPath string) error {
+	script := updatePowerShellScript(os.Getpid())
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
+	var logFile *os.File
+	if strings.TrimSpace(logPath) != "" {
+		if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+			return fmt.Errorf("create update log directory: %w", err)
+		}
+		f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+		if err != nil {
+			return fmt.Errorf("open update log: %w", err)
+		}
+		logFile = f
+		cmd.Stdout = f
+		cmd.Stderr = f
+	} else {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
+	if err := cmd.Start(); err != nil {
+		if logFile != nil {
+			_ = logFile.Close()
+		}
+		return fmt.Errorf("start updater: %w", err)
+	}
+	if err := cmd.Process.Release(); err != nil {
+		if logFile != nil {
+			_ = logFile.Close()
+		}
+		return fmt.Errorf("release updater process: %w", err)
+	}
+	if logFile != nil {
+		_ = logFile.Close()
+	}
+	return nil
+}
+
+func updatePowerShellScript(parentPID int) string {
+	return fmt.Sprintf(
 		"$env:UPDATE='true'; $env:DEXGRAM_UPDATE_PARENT_PID='%s'; irm %s | iex",
-		strconv.Itoa(os.Getpid()),
+		strconv.Itoa(parentPID),
 		installScriptURL,
 	)
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
 }
 
 func latestReleaseTag(ctx context.Context) (string, error) {

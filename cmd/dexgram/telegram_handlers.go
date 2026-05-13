@@ -78,6 +78,12 @@ func (a *app) handleUpdate(ctx context.Context, b *bot.Bot, update *models.Updat
 		})
 		return
 	}
+	if isCommand && commandName == "update" {
+		goFatal(func() {
+			a.handleUpdateCommand(ctx, b, msg)
+		})
+		return
+	}
 	if isCommand && (commandName == "stop" || commandName == "cancel") {
 		a.handleStopCommand(ctx, b, msg)
 		return

@@ -18,6 +18,7 @@ type app struct {
 	cfg                   *config.Config
 	bot                   *bot.Bot
 	store                 *state.Store
+	logPath               string
 	mu                    sync.Mutex
 	projectsMu            sync.RWMutex
 	active                map[string]*activeTurn
