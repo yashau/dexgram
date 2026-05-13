@@ -21,16 +21,29 @@ existing package boundaries over adding new framework-like abstractions.
 
 ## Development Commands
 
-Run these before handing work back:
+Run the shared local/CI check before handing work back:
 
 ```powershell
-gofmt -w .
-go test ./...
-golangci-lint run ./...
+.\scripts\check.ps1
 ```
 
-If `golangci-lint` is not installed, note that clearly in your final response.
-Do not silently skip it.
+This is the same entry point GitHub Actions uses after setting up Go from
+`go.mod`. It verifies `gofmt`, runs `go test ./...`, runs
+`go test -cover ./...`, and runs `golangci-lint run ./...`.
+
+The repo linter config is `.golangci.yml`; `errcheck` and `staticcheck` are
+explicitly enabled there. The check script pins `golangci-lint` to `v1.64.8`
+and installs it with the active Go toolchain if needed, so the linter binary is
+compatible with the repo's declared Go version.
+
+If the check script cannot install or run `golangci-lint`, note that clearly in
+your final response. Do not silently skip it.
+
+GitHub CI lives at:
+
+```text
+.github/workflows/ci.yml
+```
 
 To build the Windows binary:
 
