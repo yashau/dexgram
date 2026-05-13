@@ -22,29 +22,6 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Verify gofmt
+      - name: Check
         shell: pwsh
-        run: |
-          $files = gofmt -l .
-          if ($files) {
-            $files | ForEach-Object { Write-Error "gofmt needed: $_" }
-            exit 1
-          }
-
-      - name: Test
-        shell: pwsh
-        run: go test ./...
-
-      - name: Coverage
-        shell: pwsh
-        run: go test -cover ./...
-
-      - name: Install golangci-lint
-        shell: pwsh
-        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
-
-      - name: golangci-lint
-        shell: pwsh
-        run: |
-          $lint = Join-Path (go env GOPATH) "bin\golangci-lint.exe"
-          & $lint run ./...
+        run: .\scripts\check.ps1

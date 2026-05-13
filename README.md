@@ -59,6 +59,17 @@ In `@BotFather`, enable:
 Bot Settings -> Threads Settings -> Threaded Mode
 ```
 
+## Development Checks
+
+Run the same checks used by GitHub Actions:
+
+```powershell
+.\scripts\check.ps1
+```
+
+The script uses the active Go toolchain, installs the pinned `golangci-lint`
+version if needed, then runs gofmt verification, tests, coverage, and lint.
+
 ## Setup
 
 ### Option 1: Install The Latest Release
