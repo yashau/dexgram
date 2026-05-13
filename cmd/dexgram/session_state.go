@@ -66,6 +66,51 @@ func (a *app) sessionTurnCount(key string) int {
 	return len(session.turns)
 }
 
+func (a *app) nextQueuedTurnID() string {
+	return "queued-" + strconv.FormatInt(a.queueSeq.Add(1), 36)
+}
+
+func (a *app) nextQueuedSessionTurn(key string) *telegramTurn {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	session := a.active[key]
+	if session == nil {
+		return nil
+	}
+	for _, id := range session.order {
+		turn := session.turns[id]
+		if turn != nil && turn.Queued {
+			copied := *turn
+			return &copied
+		}
+	}
+	return nil
+}
+
+func (a *app) promoteSessionTurn(key, oldTurnID, newTurnID string) *telegramTurn {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	session := a.active[key]
+	if session == nil {
+		return nil
+	}
+	turn := session.turns[oldTurnID]
+	if turn == nil || !turn.Queued {
+		return nil
+	}
+	delete(session.turns, oldTurnID)
+	turn.TurnID = newTurnID
+	turn.Queued = false
+	session.turns[newTurnID] = turn
+	for i, id := range session.order {
+		if id == oldTurnID {
+			session.order[i] = newTurnID
+			break
+		}
+	}
+	return turn
+}
+
 func (a *app) removeSessionTurn(key, turnID string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -90,7 +135,7 @@ func (a *app) currentTurnID(key string) string {
 		return ""
 	}
 	for _, id := range session.order {
-		if session.turns[id] != nil {
+		if turn := session.turns[id]; turn != nil && !turn.Queued {
 			return id
 		}
 	}

@@ -226,12 +226,12 @@ topic.
 ## Queued Messages
 
 If you send another Telegram message while Codex is already working in that
-topic, Dexgram still submits it to Codex. Codex queues it natively, and Dexgram
-replies to the queued Telegram message with two buttons:
+topic, Dexgram keeps it queued locally and submits it to Codex when earlier
+work finishes. Dexgram replies to the queued Telegram message with two buttons:
 
 - `Steer` merges that queued input into the currently active Codex turn, then
-  deletes the queued turn.
-- `Delete` cancels the queued Codex turn without steering it.
+  deletes the local queued item.
+- `Delete` deletes the local queued item before it is submitted to Codex.
 
 The `/steer <message>` command is the text-command version of steering: it sends
 that message directly into the active Codex turn.

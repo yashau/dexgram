@@ -121,12 +121,12 @@ Runtime Behavior
 
     %%USERPROFILE%%\Documents\Codex\YYYY-MM-DD\chat-title
 
-  If a turn is already active, Dexgram submits the message to Codex anyway and
-  lets Codex queue it natively. Dexgram replies to the queued Telegram message
-  with buttons:
+  If a turn is already active, Dexgram keeps the message queued locally and
+  submits it to Codex when earlier work finishes. Dexgram replies to the queued
+  Telegram message with buttons:
 
     Steer          merge that queued input into the active turn
-    Delete         cancel that queued Codex turn
+    Delete         delete that queued message before it is submitted to Codex
 
   Each Codex turn is presented as:
 

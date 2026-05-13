@@ -488,7 +488,7 @@ func (a *app) handleSteerCallback(ctx context.Context, b *bot.Bot, query *models
 	}
 	queued := a.sessionTurn(action.Key, action.TurnID)
 	activeTurnID := a.currentTurnID(action.Key)
-	if queued == nil || activeTurnID == "" {
+	if queued == nil || !queued.Queued || activeTurnID == "" {
 		_, _ = b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: query.ID, Text: "Nothing to steer.", ShowAlert: true})
 		return
 	}
@@ -500,7 +500,6 @@ func (a *app) handleSteerCallback(ctx context.Context, b *bot.Bot, query *models
 		_, _ = b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: query.ID, Text: "Steer failed: " + err.Error(), ShowAlert: true})
 		return
 	}
-	_ = interruptTurn(ctx, session.client, session.threadID, action.TurnID)
 	a.removeSessionTurn(action.Key, action.TurnID)
 	a.forgetTurnAction(action.Key, action.TurnID)
 	if query.Message.Message != nil {
@@ -525,8 +524,9 @@ func (a *app) handleDeleteQueuedCallback(ctx context.Context, b *bot.Bot, query 
 		_, _ = b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: query.ID, Text: "No active Codex session.", ShowAlert: true})
 		return
 	}
-	if err := interruptTurn(ctx, session.client, session.threadID, action.TurnID); err != nil {
-		_, _ = b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: query.ID, Text: "Delete failed: " + err.Error(), ShowAlert: true})
+	queued := a.sessionTurn(action.Key, action.TurnID)
+	if queued == nil || !queued.Queued {
+		_, _ = b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: query.ID, Text: "That queued message is no longer available.", ShowAlert: true})
 		return
 	}
 	a.removeSessionTurn(action.Key, action.TurnID)

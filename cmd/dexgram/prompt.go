@@ -38,15 +38,21 @@ func (a *app) handlePrompt(ctx context.Context, b *bot.Bot, msg *models.Message,
 	}
 
 	queued := a.sessionTurnCount(key) > 0
-	turnID, err := startTurn(ctx, session.client, session.threadID, input, a.cfg.Codex.ApprovalPolicy, a.cfg.Codex.Sandbox)
-	if err != nil {
-		log.Printf("codex turn start failed: %v", err)
-		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID:          msg.Chat.ID,
-			MessageThreadID: msg.MessageThreadID,
-			Text:            "Dexgram could not submit the message to Codex:\n\n" + err.Error(),
-		})
-		return
+	var turnID string
+	if !queued {
+		var err error
+		turnID, err = startTurn(ctx, session.client, session.threadID, input, a.cfg.Codex.ApprovalPolicy, a.cfg.Codex.Sandbox)
+		if err != nil {
+			log.Printf("codex turn start failed: %v", err)
+			_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
+				ChatID:          msg.Chat.ID,
+				MessageThreadID: msg.MessageThreadID,
+				Text:            "Dexgram could not submit the message to Codex:\n\n" + err.Error(),
+			})
+			return
+		}
+	} else {
+		turnID = a.nextQueuedTurnID()
 	}
 	if err := a.store.ClearStagedAttachments(msg.Chat.ID, msg.MessageThreadID); err != nil {
 		log.Printf("clear staged attachments: %v", err)
@@ -54,6 +60,7 @@ func (a *app) handlePrompt(ctx context.Context, b *bot.Bot, msg *models.Message,
 
 	tgTurn := &telegramTurn{
 		TurnID:          turnID,
+		Queued:          queued,
 		ChatID:          msg.Chat.ID,
 		MessageThreadID: msg.MessageThreadID,
 		Text:            displayText,

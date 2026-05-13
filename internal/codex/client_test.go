@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -103,7 +104,7 @@ func TestClientCallReturnsRPCErrorAndForgetsPending(t *testing.T) {
 	}()
 
 	err := client.Call(context.Background(), "turn/start", nil, nil)
-	if err == nil || !strings.Contains(err.Error(), "turn/start: boom") {
+	if err == nil || !strings.Contains(err.Error(), "app-server returned error for turn/start (code -32000): boom") {
 		t.Fatalf("expected RPC error, got %v", err)
 	}
 	if len(client.pending) != 0 {
@@ -183,6 +184,42 @@ func TestClientHandlesServerRequests(t *testing.T) {
 	}
 }
 
+func TestExpectedAppServerPipeClose(t *testing.T) {
+	for _, err := range []error{
+		io.ErrClosedPipe,
+		&os.PathError{Op: "read", Path: "|0", Err: os.ErrClosed},
+		fmt.Errorf("read |0: file already closed"),
+	} {
+		if !isExpectedAppServerPipeClose(err) {
+			t.Fatalf("expected %v to be treated as a normal pipe close", err)
+		}
+	}
+	if isExpectedAppServerPipeClose(errors.New("connection reset by peer")) {
+		t.Fatal("connection reset should still be reported")
+	}
+}
+
+func TestNormalizeAppServerStderr(t *testing.T) {
+	line := `{"timestamp":"2026-05-13T10:22:11Z","level":"WARN","fields":{"message":"startup remote plugin sync failed"},"target":"codex_core_plugins::manifest"}`
+	got := normalizeAppServerStderr(line)
+	want := "app-server warn codex_core_plugins::manifest: startup remote plugin sync failed"
+	if got != want {
+		t.Fatalf("normalizeAppServerStderr returned %q, want %q", got, want)
+	}
+
+	colored := "\x1b[31mERROR\x1b[0m codex_core::tools::router: error=Exit code: 1"
+	got = normalizeAppServerStderr(colored)
+	want = "app-server tool error: Exit code: 1"
+	if got != want {
+		t.Fatalf("normalizeAppServerStderr returned %q, want %q", got, want)
+	}
+
+	long := strings.Repeat("x", maxAppServerStderrLineLen+10)
+	if got := normalizeAppServerStderr(long); !strings.Contains(got, "[truncated 10 bytes]") {
+		t.Fatalf("expected long stderr to be truncated, got %q", got)
+	}
+}
+
 func newPipeClient(t *testing.T) (*Client, *io.PipeReader, *io.PipeWriter) {
 	t.Helper()
 	stdinReader, stdinWriter := io.Pipe()
@@ -196,6 +233,7 @@ func newPipeClient(t *testing.T) (*Client, *io.PipeReader, *io.PipeWriter) {
 		errs:    make(chan error, 16),
 		closed:  make(chan struct{}),
 	}
+	client.readers.Add(1)
 	go client.readStdout()
 	return client, stdinReader, stdoutWriter
 }

@@ -323,7 +323,10 @@ func (a *app) setTopicGoal(ctx context.Context, chatID int64, messageThreadID in
 	go func() {
 		for {
 			select {
-			case err := <-errs:
+			case err, ok := <-errs:
+				if !ok {
+					return
+				}
 				log.Printf("codex app-server: %v", err)
 			case <-done:
 				return
@@ -363,6 +366,52 @@ func interruptTurn(ctx context.Context, c *codex.Client, threadID, turnID string
 		"threadId": threadID,
 		"turnId":   turnID,
 	}, &out)
+}
+
+func (a *app) startNextQueuedTurn(ctx context.Context, key string, session *activeTurn) bool {
+	for {
+		queued := a.nextQueuedSessionTurn(key)
+		if queued == nil {
+			return false
+		}
+
+		turnID, err := startTurn(ctx, session.client, session.threadID, queued.Input, a.cfg.Codex.ApprovalPolicy, a.cfg.Codex.Sandbox)
+		if err != nil {
+			log.Printf("codex queued turn start failed: %v", err)
+			a.removeSessionTurn(key, queued.TurnID)
+			a.forgetTurnAction(key, queued.TurnID)
+			if queued.StatusMessageID != 0 {
+				_, _ = a.bot.EditMessageText(ctx, &bot.EditMessageTextParams{
+					ChatID:    queued.ChatID,
+					MessageID: queued.StatusMessageID,
+					Text:      "Dexgram could not submit the queued message to Codex:\n\n" + err.Error(),
+				})
+			}
+			continue
+		}
+
+		tgTurn := a.promoteSessionTurn(key, queued.TurnID, turnID)
+		if tgTurn == nil {
+			_ = interruptTurn(ctx, session.client, session.threadID, turnID)
+			continue
+		}
+		a.forgetTurnAction(key, queued.TurnID)
+		if tgTurn.StatusMessageID != 0 {
+			_, _ = a.bot.EditMessageText(ctx, &bot.EditMessageTextParams{
+				ChatID:      tgTurn.ChatID,
+				MessageID:   tgTurn.StatusMessageID,
+				Text:        "Dexgram is thinking...",
+				ReplyMarkup: turnControlMarkup(a.rememberTurnAction(key, tgTurn.TurnID), false),
+			})
+		}
+		for _, ev := range a.takePendingTurnEvents(key, turnID) {
+			if a.handleTopicSessionEvent(ctx, key, session, ev) {
+				return false
+			}
+		}
+		a.startTypingIndicator(key, tgTurn.ChatID, tgTurn.MessageThreadID)
+		return true
+	}
 }
 
 func (a *app) collectTopicSession(ctx context.Context, key string, session *activeTurn) {
@@ -546,7 +595,7 @@ func (a *app) handleTopicSessionEvent(ctx context.Context, key string, session *
 		}
 		a.forgetTurnAction(key, tgTurn.TurnID)
 		a.removeSessionTurn(key, tgTurn.TurnID)
-		if a.sessionTurnCount(key) == 0 {
+		if !a.startNextQueuedTurn(ctx, key, session) && a.sessionTurnCount(key) == 0 {
 			return true
 		}
 	case "error":

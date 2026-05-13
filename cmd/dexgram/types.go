@@ -26,6 +26,7 @@ type app struct {
 	inputs       map[string]*pendingInput
 	approvalSeq  atomic.Int64
 	actionSeq    atomic.Int64
+	queueSeq     atomic.Int64
 	inputSeq     atomic.Int64
 	projects     []codexprojects.Project
 	lastTypingAt time.Time
@@ -46,6 +47,7 @@ type activeTurn struct {
 
 type telegramTurn struct {
 	TurnID           string
+	Queued           bool
 	ChatID           int64
 	MessageThreadID  int
 	StatusMessageID  int

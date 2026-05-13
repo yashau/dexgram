@@ -10,9 +10,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"sync"
 	"sync/atomic"
 )
+
+const maxAppServerStderrLineLen = 2000
+
+var ansiEscapePattern = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
 
 type Client struct {
 	cmd    *exec.Cmd
@@ -27,6 +33,7 @@ type Client struct {
 	requestHandler ServerRequestHandler
 	mu             sync.Mutex
 	closed         chan struct{}
+	readers        sync.WaitGroup
 }
 
 type rpcMessage struct {
@@ -104,6 +111,7 @@ func StartStdioWithOptions(ctx context.Context, opts StartOptions) (*Client, err
 		errs:    make(chan error, 8),
 		closed:  make(chan struct{}),
 	}
+	c.readers.Add(2)
 	go c.readStdout()
 	go c.readStderr()
 	go c.wait()
@@ -192,7 +200,7 @@ func (c *Client) Call(ctx context.Context, method string, params any, out any) e
 	select {
 	case msg := <-ch:
 		if msg.Error != nil {
-			return fmt.Errorf("%s: %s", method, msg.Error.Message)
+			return fmt.Errorf("app-server returned error for %s (code %d): %s", method, msg.Error.Code, msg.Error.Message)
 		}
 		if out == nil {
 			return nil
@@ -248,6 +256,7 @@ func (c *Client) writeJSON(v any) error {
 }
 
 func (c *Client) readStdout() {
+	defer c.readers.Done()
 	scanner := bufio.NewScanner(c.stdout)
 	buf := make([]byte, 0, 1024*1024)
 	scanner.Buffer(buf, 16*1024*1024)
@@ -277,19 +286,82 @@ func (c *Client) readStdout() {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		select {
-		case <-c.closed:
-		default:
-			c.reportError(fmt.Errorf("read app-server stdout: %w", err))
+		if !isExpectedAppServerPipeClose(err) {
+			select {
+			case <-c.closed:
+			default:
+				c.reportError(fmt.Errorf("read app-server stdout: %w", err))
+			}
 		}
 	}
 	close(c.events)
 }
 
+func isExpectedAppServerPipeClose(err error) bool {
+	return errors.Is(err, os.ErrClosed) ||
+		errors.Is(err, io.ErrClosedPipe) ||
+		strings.Contains(strings.ToLower(err.Error()), "file already closed")
+}
+
+func normalizeAppServerStderr(line string) string {
+	line = strings.TrimSpace(ansiEscapePattern.ReplaceAllString(line, ""))
+	if line == "" {
+		return "app-server stderr: <blank>"
+	}
+
+	var entry struct {
+		Level  string `json:"level"`
+		Target string `json:"target"`
+		Fields struct {
+			Message string `json:"message"`
+			Error   string `json:"error"`
+		} `json:"fields"`
+	}
+	if json.Unmarshal([]byte(line), &entry) == nil && (entry.Level != "" || entry.Target != "") {
+		msg := entry.Fields.Message
+		if msg == "" {
+			msg = entry.Fields.Error
+		}
+		if msg == "" {
+			msg = line
+		}
+		if len(msg) > maxAppServerStderrLineLen {
+			msg = msg[:maxAppServerStderrLineLen] + fmt.Sprintf("... [truncated %d bytes]", len(msg)-maxAppServerStderrLineLen)
+		}
+		level := strings.ToLower(entry.Level)
+		if level == "" {
+			level = "stderr"
+		}
+		if entry.Target == "" {
+			return fmt.Sprintf("app-server %s: %s", level, msg)
+		}
+		return fmt.Sprintf("app-server %s %s: %s", level, entry.Target, msg)
+	}
+
+	if len(line) > maxAppServerStderrLineLen {
+		line = line[:maxAppServerStderrLineLen] + fmt.Sprintf("... [truncated %d bytes]", len(line)-maxAppServerStderrLineLen)
+	}
+	if strings.Contains(line, "codex_core::tools::router") && strings.Contains(line, "ERROR") {
+		if _, after, ok := strings.Cut(line, "error="); ok {
+			return "app-server tool error: " + strings.TrimSpace(after)
+		}
+		return "app-server tool error: " + line
+	}
+	return "app-server stderr: " + line
+}
+
 func (c *Client) reportError(err error) {
 	select {
-	case c.errs <- err:
+	case <-c.closed:
+		select {
+		case c.errs <- err:
+		default:
+		}
 	default:
+		select {
+		case c.errs <- err:
+		default:
+		}
 	}
 }
 
@@ -337,13 +409,25 @@ func (c *Client) replyResult(id int64, result any) {
 }
 
 func (c *Client) readStderr() {
+	defer c.readers.Done()
 	scanner := bufio.NewScanner(c.stderr)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 16*1024*1024)
 	for scanner.Scan() {
-		c.reportError(fmt.Errorf("app-server stderr: %s", scanner.Text()))
+		c.reportError(errors.New(normalizeAppServerStderr(scanner.Text())))
+	}
+	if err := scanner.Err(); err != nil && !isExpectedAppServerPipeClose(err) {
+		select {
+		case <-c.closed:
+		default:
+			c.reportError(fmt.Errorf("read app-server stderr: %w", err))
+		}
 	}
 }
 
 func (c *Client) wait() {
 	_ = c.cmd.Wait()
 	close(c.closed)
+	c.readers.Wait()
+	close(c.errs)
 }

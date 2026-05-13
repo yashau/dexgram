@@ -46,6 +46,45 @@ func TestSessionStateTracksTurnsInOrder(t *testing.T) {
 	}
 }
 
+func TestSessionStatePromotesLocalQueuedTurns(t *testing.T) {
+	app := newTestApp()
+	session := &activeTurn{
+		ctx:   context.Background(),
+		turns: map[string]*telegramTurn{},
+	}
+	if !app.registerSession("chat:topic", session) {
+		t.Fatal("expected session register")
+	}
+
+	app.addSessionTurn("chat:topic", &telegramTurn{TurnID: "active-turn"})
+	localID := app.nextQueuedTurnID()
+	app.addSessionTurn("chat:topic", &telegramTurn{TurnID: localID, Queued: true, Text: "later"})
+
+	if got := app.currentTurnID("chat:topic"); got != "active-turn" {
+		t.Fatalf("current turn = %q", got)
+	}
+	queued := app.nextQueuedSessionTurn("chat:topic")
+	if queued == nil || queued.TurnID != localID {
+		t.Fatalf("next queued turn = %#v", queued)
+	}
+
+	promoted := app.promoteSessionTurn("chat:topic", localID, "codex-turn")
+	if promoted == nil || promoted.Queued || promoted.TurnID != "codex-turn" {
+		t.Fatalf("promoted turn = %#v", promoted)
+	}
+	if got := app.sessionTurn("chat:topic", localID); got != nil {
+		t.Fatalf("local turn id should be gone: %#v", got)
+	}
+	if got := app.sessionTurn("chat:topic", "codex-turn"); got == nil || got.Text != "later" {
+		t.Fatalf("codex turn missing: %#v", got)
+	}
+
+	app.removeSessionTurn("chat:topic", "active-turn")
+	if got := app.currentTurnID("chat:topic"); got != "codex-turn" {
+		t.Fatalf("current turn after promotion = %q", got)
+	}
+}
+
 func TestTurnActionsAreRememberedAndForgotten(t *testing.T) {
 	app := newTestApp()
 
