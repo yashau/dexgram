@@ -112,12 +112,13 @@ func run() error {
 	defer stop()
 
 	app := &app{
-		cfg:       cfg,
-		store:     store,
-		active:    map[string]*activeTurn{},
-		approvals: map[string]*pendingApproval{},
-		actions:   map[string]turnAction{},
-		inputs:    map[string]*pendingInput{},
+		cfg:                   cfg,
+		store:                 store,
+		active:                map[string]*activeTurn{},
+		approvals:             map[string]*pendingApproval{},
+		actions:               map[string]turnAction{},
+		inputs:                map[string]*pendingInput{},
+		typingSuppressedUntil: map[string]time.Time{},
 	}
 	if _, err := app.refreshProjects(); err != nil {
 		return err

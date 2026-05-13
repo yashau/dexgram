@@ -31,6 +31,8 @@ answers, and interruption support.
 - Queues new Telegram messages while Codex is busy, with inline controls to
   steer queued items into the active turn or delete them before they run.
 - Supports native Codex goals from Telegram with `/goal <objective>`.
+- Starts true Codex Plan Mode turns from Telegram with `/plan <message>`, and
+  stores Telegram-selected model/reasoning defaults for Plan Mode.
 - Downloads Telegram photos and documents for Codex prompts, stages
   attachment-only messages, and can upload final-answer local file links back
   to Telegram when enabled.
@@ -192,6 +194,14 @@ log indefinitely.
 - `/goal <objective>` sets the native Codex goal for the topic. As of writing,
   goals must be enabled in your Codex config first:
   `%USERPROFILE%\.codex\config.toml` with `[features]` and `goals = true`.
+- `/plan <message>` starts a Codex Plan Mode turn in the current topic.
+- `/settings` shows the model and reasoning effort used for Telegram-started
+  Plan Mode turns.
+- `/model [model-id|auto]` chooses the model for Telegram-started Plan Mode
+  turns. Without an argument it opens an inline selection menu.
+- `/effort [auto|minimal|low|medium|high|xhigh]` chooses the reasoning effort
+  for Telegram-started Plan Mode turns. Without an argument it opens an inline
+  selection menu.
 - `/stop` or `/cancel` interrupts the active Codex turn.
 
 ## How Chats Run
@@ -211,6 +221,10 @@ Each Codex turn is mirrored back into Telegram as a small set of messages:
 - An initial assistant or plan message, when Codex sends one.
 - One live run-log message for commands, tools, file edits, searches, and media.
 - The final assistant answer.
+
+Live status and run-log messages are sent silently to keep Telegram quiet while
+Codex works. Final answers, approval prompts, and user-input prompts use normal
+Telegram notifications because they are the messages that usually need attention.
 
 The active turn status message includes a `Stop` button. It does the same job
 as `/stop` or `/cancel`: Dexgram interrupts the current Codex turn for that

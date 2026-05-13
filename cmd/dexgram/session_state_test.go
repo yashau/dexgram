@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"dexgram/internal/codex"
+
+	"github.com/go-telegram/bot"
 )
 
 func TestSessionStateTracksTurnsInOrder(t *testing.T) {
@@ -143,24 +145,62 @@ func TestUnknownTurnEventsAreDeferredAndReplayed(t *testing.T) {
 
 func TestTypingActionReservationIsGloballyThrottled(t *testing.T) {
 	app := newTestApp()
-	if !app.reserveTypingAction() {
+	if !app.reserveTypingAction(123, 456) {
 		t.Fatal("expected first typing action to be reserved")
 	}
-	if app.reserveTypingAction() {
+	if app.reserveTypingAction(123, 456) {
 		t.Fatal("expected immediate second typing action to be throttled")
 	}
 
 	app.mu.Lock()
 	app.lastTypingAt = time.Now().Add(-typingGlobalMinInterval)
 	app.mu.Unlock()
-	if !app.reserveTypingAction() {
+	if !app.reserveTypingAction(123, 456) {
 		t.Fatal("expected typing action after interval to be reserved")
+	}
+}
+
+func TestTypingActionSuppressionIsPerThread(t *testing.T) {
+	app := newTestApp()
+	app.suppressTypingActions(123, 456, time.Minute)
+
+	if app.reserveTypingAction(123, 456) {
+		t.Fatal("expected suppressed typing action to be skipped")
+	}
+	if !app.reserveTypingAction(123, 789) {
+		t.Fatal("expected different thread to be allowed")
+	}
+}
+
+func TestTypingRateLimitDoesNotBackoffTelegramQueue(t *testing.T) {
+	oldQueue := defaultTelegramQueue
+	defaultTelegramQueue = newTelegramQueue(time.Hour)
+	defer func() {
+		defaultTelegramQueue = oldQueue
+	}()
+
+	retryAfter, ok := logTelegramTypingPressure(123, 456, &bot.TooManyRequestsError{
+		Message:    "too many requests",
+		RetryAfter: 1,
+	})
+	if !ok {
+		t.Fatal("expected typing rate limit to be recognized")
+	}
+	if retryAfter != time.Second {
+		t.Fatalf("retryAfter = %s, want 1s", retryAfter)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := waitTelegramQueue(ctx, "normal send after typing pressure", 123, 456); err != nil {
+		t.Fatalf("typing pressure backed off the main telegram queue: %v", err)
 	}
 }
 
 func newTestApp() *app {
 	return &app{
-		active:  map[string]*activeTurn{},
-		actions: map[string]turnAction{},
+		active:                map[string]*activeTurn{},
+		actions:               map[string]turnAction{},
+		typingSuppressedUntil: map[string]time.Time{},
 	}
 }

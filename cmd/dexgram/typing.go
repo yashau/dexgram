@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/go-telegram/bot"
@@ -11,6 +13,8 @@ import (
 
 const typingRefreshInterval = 45 * time.Second
 const typingGlobalMinInterval = 5 * time.Second
+const typingActionTimeout = 5 * time.Second
+const typingRateLimitCushion = time.Second
 
 func (a *app) startTypingIndicator(key string, chatID int64, messageThreadID int) {
 	a.mu.Lock()
@@ -37,7 +41,7 @@ func (a *app) keepTyping(ctx context.Context, key string, chatID int64, messageT
 		if a.sessionTurnCount(key) == 0 {
 			return
 		}
-		if !a.reserveTypingAction() {
+		if !a.reserveTypingAction(chatID, messageThreadID) {
 			select {
 			case <-ctx.Done():
 				return
@@ -45,17 +49,20 @@ func (a *app) keepTyping(ctx context.Context, key string, chatID int64, messageT
 				continue
 			}
 		}
-		if err := waitTelegramQueue(ctx, "send typing action", chatID, messageThreadID); err != nil {
-			return
-		}
-		if _, err := a.bot.SendChatAction(ctx, &bot.SendChatActionParams{
+		actionCtx, cancel := context.WithTimeout(ctx, typingActionTimeout)
+		_, err := a.bot.SendChatAction(actionCtx, &bot.SendChatActionParams{
 			ChatID:          chatID,
 			MessageThreadID: messageThreadID,
 			Action:          models.ChatActionTyping,
-		}); err != nil && ctx.Err() == nil && !loggedError {
-			logTelegramPressure("send typing action", chatID, messageThreadID, err)
-			loggedError = true
-			log.Printf("send typing action: %v", err)
+		})
+		cancel()
+		if err != nil && ctx.Err() == nil {
+			if retryAfter, ok := logTelegramTypingPressure(chatID, messageThreadID, err); ok {
+				a.suppressTypingActions(chatID, messageThreadID, retryAfter+typingRateLimitCushion)
+			} else if !loggedError {
+				loggedError = true
+				log.Printf("send typing action: %v", err)
+			}
 		}
 
 		select {
@@ -66,15 +73,51 @@ func (a *app) keepTyping(ctx context.Context, key string, chatID int64, messageT
 	}
 }
 
-func (a *app) reserveTypingAction() bool {
+func (a *app) reserveTypingAction(chatID int64, messageThreadID int) bool {
 	now := time.Now()
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if suppressedUntil := a.typingSuppressedUntil[typingSuppressionKey(chatID, messageThreadID)]; now.Before(suppressedUntil) {
+		return false
+	}
 	if !a.lastTypingAt.IsZero() && now.Sub(a.lastTypingAt) < typingGlobalMinInterval {
 		return false
 	}
 	a.lastTypingAt = now
 	return true
+}
+
+func (a *app) suppressTypingActions(chatID int64, messageThreadID int, delay time.Duration) {
+	if delay <= 0 {
+		return
+	}
+	until := time.Now().Add(delay)
+	key := typingSuppressionKey(chatID, messageThreadID)
+	a.mu.Lock()
+	if a.typingSuppressedUntil == nil {
+		a.typingSuppressedUntil = map[string]time.Time{}
+	}
+	if a.typingSuppressedUntil[key].Before(until) {
+		a.typingSuppressedUntil[key] = until
+	}
+	a.mu.Unlock()
+}
+
+func logTelegramTypingPressure(chatID int64, messageThreadID int, err error) (time.Duration, bool) {
+	var rateErr *bot.TooManyRequestsError
+	if !errors.As(err, &rateErr) {
+		return 0, false
+	}
+	retryAfter := time.Duration(rateErr.RetryAfter) * time.Second
+	if retryAfter <= 0 {
+		retryAfter = typingRefreshInterval
+	}
+	log.Printf("telegram typing pressure chat_id=%d thread_id=%d retry_after=%s reason=%q", chatID, messageThreadID, retryAfter, rateErr.Message)
+	return retryAfter, true
+}
+
+func typingSuppressionKey(chatID int64, messageThreadID int) string {
+	return strconv.FormatInt(chatID, 10) + ":" + strconv.Itoa(messageThreadID)
 }
 
 func (a *app) stopTypingIndicator(key string) {

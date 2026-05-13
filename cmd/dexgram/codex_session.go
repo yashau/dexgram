@@ -265,14 +265,41 @@ func appServerWorkingDir(conv state.Conversation) string {
 	return projectlessRoot()
 }
 
-func startTurn(ctx context.Context, c *codex.Client, threadID string, input []map[string]any, approvalPolicy, sandbox string) (string, error) {
+type codexTurnOptions struct {
+	ApprovalPolicy    string
+	Sandbox           string
+	CollaborationMode string
+	Model             string
+	ReasoningEffort   string
+}
+
+func startTurn(ctx context.Context, c *codex.Client, threadID string, input []map[string]any, opts codexTurnOptions) (string, error) {
 	var out codex.TurnStartResponse
-	if err := c.Call(ctx, "turn/start", map[string]any{
+	params := map[string]any{
 		"threadId":       threadID,
 		"input":          input,
-		"approvalPolicy": approvalPolicy,
-		"sandbox":        sandbox,
-	}, &out); err != nil {
+		"approvalPolicy": opts.ApprovalPolicy,
+		"sandbox":        opts.Sandbox,
+	}
+	if mode := normalizeCollaborationMode(opts.CollaborationMode); mode != "" {
+		model := strings.TrimSpace(opts.Model)
+		if model == "" {
+			return "", fmt.Errorf("codex model is required for %s mode; set one with /model", mode)
+		}
+		settings := map[string]any{
+			"model":                  model,
+			"reasoning_effort":       nil,
+			"developer_instructions": nil,
+		}
+		if effort := normalizeReasoningEffort(opts.ReasoningEffort); effort != "" {
+			settings["reasoning_effort"] = effort
+		}
+		params["collaborationMode"] = map[string]any{
+			"mode":     mode,
+			"settings": settings,
+		}
+	}
+	if err := c.Call(ctx, "turn/start", params, &out); err != nil {
 		return "", err
 	}
 	return out.Turn.ID, nil
@@ -375,7 +402,21 @@ func (a *app) startNextQueuedTurn(ctx context.Context, key string, session *acti
 			return false
 		}
 
-		turnID, err := startTurn(ctx, session.client, session.threadID, queued.Input, a.cfg.Codex.ApprovalPolicy, a.cfg.Codex.Sandbox)
+		opts, err := a.turnOptions(ctx, session.client, queued.CollaborationMode)
+		if err != nil {
+			log.Printf("codex queued turn options failed: %v", err)
+			a.removeSessionTurn(key, queued.TurnID)
+			a.forgetTurnAction(key, queued.TurnID)
+			if queued.StatusMessageID != 0 {
+				_, _ = a.bot.EditMessageText(ctx, &bot.EditMessageTextParams{
+					ChatID:    queued.ChatID,
+					MessageID: queued.StatusMessageID,
+					Text:      "Dexgram could not prepare the queued message for Codex:\n\n" + err.Error(),
+				})
+			}
+			continue
+		}
+		turnID, err := startTurn(ctx, session.client, session.threadID, queued.Input, opts)
 		if err != nil {
 			log.Printf("codex queued turn start failed: %v", err)
 			a.removeSessionTurn(key, queued.TurnID)

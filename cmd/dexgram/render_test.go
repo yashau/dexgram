@@ -7,7 +7,7 @@ import (
 	"dexgram/internal/codex"
 )
 
-func TestRenderTelegramMarkdownEscapesTextAndPreservesSupportedMarkdown(t *testing.T) {
+func TestRenderTelegramMessagesConvertsMarkdownToEntities(t *testing.T) {
 	input := strings.Join([]string{
 		"# Heading!",
 		"- item_with [link](https://example.com/path) and `code_value`",
@@ -15,20 +15,27 @@ func TestRenderTelegramMarkdownEscapesTextAndPreservesSupportedMarkdown(t *testi
 		"plain (value).",
 	}, "\n")
 
-	got := renderTelegramMarkdown(input)
+	messages := renderTelegramMessages(input, 4096)
+	if len(messages) != 1 {
+		t.Fatalf("message count = %d, want 1", len(messages))
+	}
+	got := messages[0]
 
-	assertContains(t, got, "*Heading\\!*")
-	assertContains(t, got, "\u2022 item\\_with [link](https://example.com/path) and `code_value`")
-	assertContains(t, got, "> quoted \\*text\\*")
-	assertContains(t, got, "plain \\(value\\)\\.")
+	assertContains(t, got.Text, "Heading!")
+	assertContains(t, got.Text, "item_with")
+	assertContains(t, got.Text, "link")
+	assertContains(t, got.Text, "code_value")
+	assertContains(t, got.Text, "plain (value).")
+	assertEntity(t, got, "bold")
+	assertEntity(t, got, "text_link")
+	assertEntity(t, got, "code")
 }
 
-func TestRenderTelegramMarkdownCodeFenceEscapesCodeOnly(t *testing.T) {
-	got := renderTelegramMarkdown("```go\nfmt.Println(`hello`)\n```")
+func TestRenderTelegramMessagesCodeFenceUsesPreEntity(t *testing.T) {
+	got := firstRenderedTelegramMessage("```go\nfmt.Println(`hello`)\n```", 4096)
 
-	if got != "```go\nfmt.Println(\\`hello\\`)\n```" {
-		t.Fatalf("unexpected rendered fence: %q", got)
-	}
+	assertContains(t, got.Text, "fmt.Println(`hello`)")
+	assertEntity(t, got, "pre")
 }
 
 func TestSplitTelegramChunksHandlesEmptyParagraphsAndLongText(t *testing.T) {
@@ -106,4 +113,14 @@ func assertContains(t *testing.T, got, want string) {
 	if !strings.Contains(got, want) {
 		t.Fatalf("expected %q to contain %q", got, want)
 	}
+}
+
+func assertEntity(t *testing.T, message renderedTelegramMessage, entityType string) {
+	t.Helper()
+	for _, entity := range message.Entities {
+		if string(entity.Type) == entityType {
+			return
+		}
+	}
+	t.Fatalf("expected entity %q in %#v", entityType, message.Entities)
 }

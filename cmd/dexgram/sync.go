@@ -100,15 +100,17 @@ func unsyncedTurns(turns []codex.Turn, lastID string) []codex.Turn {
 func renderHistoricalTurn(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, turn codex.Turn) {
 	initial, runLines, final := summarizeTurn(turn)
 	if strings.TrimSpace(initial) != "" {
-		_ = sendRichMessage(ctx, b, chatID, messageThreadID, initial)
+		_ = sendSilentRichMessage(ctx, b, chatID, messageThreadID, initial)
 	}
 	if len(runLines) > 0 {
 		text := "Synced run log\n\n" + strings.Join(runLines, "\n")
+		rendered := firstRenderedTelegramMessage("```text\n"+text+"\n```", 3900)
 		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID:          chatID,
-			MessageThreadID: messageThreadID,
-			Text:            "```text\n" + escapeCode(text) + "\n```",
-			ParseMode:       models.ParseModeMarkdown,
+			ChatID:              chatID,
+			MessageThreadID:     messageThreadID,
+			Text:                rendered.Text,
+			Entities:            rendered.Entities,
+			DisableNotification: true,
 		})
 	}
 	if strings.TrimSpace(final) != "" {

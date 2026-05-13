@@ -29,6 +29,47 @@ type TurnStartResponse struct {
 	Turn Turn `json:"turn"`
 }
 
+type ModelListResponse struct {
+	Data []ModelOption `json:"data"`
+}
+
+type ModelOption struct {
+	ID                       string                   `json:"id"`
+	Model                    string                   `json:"model"`
+	DisplayName              string                   `json:"displayName"`
+	DefaultReasoningEffort   string                   `json:"defaultReasoningEffort"`
+	SupportedReasoningEffort []ReasoningEffortWrapper `json:"supportedReasoningEfforts"`
+	IsDefault                bool                     `json:"isDefault"`
+	Hidden                   bool                     `json:"hidden"`
+}
+
+func (m ModelOption) Name() string {
+	if m.Model != "" {
+		return m.Model
+	}
+	return m.ID
+}
+
+type ReasoningEffortWrapper struct {
+	ReasoningEffort    string `json:"reasoning_effort"`
+	ReasoningEffortAlt string `json:"reasoningEffort"`
+}
+
+func (r *ReasoningEffortWrapper) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		r.ReasoningEffort = s
+		return nil
+	}
+	type wrapper ReasoningEffortWrapper
+	var out wrapper
+	if err := json.Unmarshal(data, &out); err != nil {
+		return err
+	}
+	*r = ReasoningEffortWrapper(out)
+	return nil
+}
+
 type Thread struct {
 	ID        string          `json:"id"`
 	Name      string          `json:"name"`

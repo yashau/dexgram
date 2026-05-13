@@ -122,6 +122,41 @@ func TestStoreStagedAttachmentsAreOrderedScopedAndClearable(t *testing.T) {
 	}
 }
 
+func TestStoreSettingsRoundTripAndMissing(t *testing.T) {
+	store := openTestStore(t)
+	defer closeTestStore(t, store)
+
+	value, err := store.GetSetting("codex.model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value != "" {
+		t.Fatalf("missing setting = %q, want empty", value)
+	}
+
+	if err := store.SetSetting("codex.model", "gpt-test"); err != nil {
+		t.Fatal(err)
+	}
+	value, err = store.GetSetting("codex.model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value != "gpt-test" {
+		t.Fatalf("setting = %q, want gpt-test", value)
+	}
+
+	if err := store.SetSetting("codex.model", ""); err != nil {
+		t.Fatal(err)
+	}
+	value, err = store.GetSetting("codex.model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value != "" {
+		t.Fatalf("cleared setting = %q, want empty", value)
+	}
+}
+
 func openTestStore(t *testing.T) *Store {
 	t.Helper()
 	store, err := Open(filepath.Join(t.TempDir(), "dexgram.db"))

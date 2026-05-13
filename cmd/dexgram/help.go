@@ -107,6 +107,20 @@ Telegram Commands
   /goal <objective>
       Set the native Codex goal for this Telegram topic.
 
+  /plan <message>
+      Start a true Codex Plan Mode turn in this Telegram topic.
+
+  /settings
+      Show the model and reasoning effort used for Telegram-started Plan Mode.
+
+  /model [model-id|auto]
+      Choose the model for Telegram-started Plan Mode turns. Without an
+      argument, opens an inline selection menu.
+
+  /effort [auto|minimal|low|medium|high|xhigh]
+      Choose the reasoning effort for Telegram-started Plan Mode turns.
+      Without an argument, opens an inline selection menu.
+
   /stop
   /cancel
       Interrupt the currently active Codex turn.
@@ -133,6 +147,9 @@ Runtime Behavior
     1. Initial assistant/plan message
     2. One live run-log message for commands, tools, edits, searches, media
     3. Final assistant answer
+
+  Live status and run-log messages are sent silently. Final answers, approval
+  prompts, and user-input prompts use normal Telegram notifications.
 
   Telegram photos/image documents are sent to Codex as localImage inputs.
   Generic documents are downloaded, mentioned, and included by absolute path.

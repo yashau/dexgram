@@ -10,6 +10,14 @@ import (
 )
 
 func (a *app) handlePrompt(ctx context.Context, b *bot.Bot, msg *models.Message, prompt string) {
+	a.handlePromptWithMode(ctx, b, msg, prompt, "")
+}
+
+func (a *app) handlePlanPrompt(ctx context.Context, b *bot.Bot, msg *models.Message, prompt string) {
+	a.handlePromptWithMode(ctx, b, msg, prompt, "plan")
+}
+
+func (a *app) handlePromptWithMode(ctx context.Context, b *bot.Bot, msg *models.Message, prompt, collaborationMode string) {
 	key := fmt.Sprintf("%d:%d", msg.Chat.ID, msg.MessageThreadID)
 	input, displayText, err := a.buildTurnInput(ctx, b, msg, prompt)
 	if err != nil {
@@ -41,7 +49,17 @@ func (a *app) handlePrompt(ctx context.Context, b *bot.Bot, msg *models.Message,
 	var turnID string
 	if !queued {
 		var err error
-		turnID, err = startTurn(ctx, session.client, session.threadID, input, a.cfg.Codex.ApprovalPolicy, a.cfg.Codex.Sandbox)
+		opts, optErr := a.turnOptions(ctx, session.client, collaborationMode)
+		if optErr != nil {
+			log.Printf("codex turn options failed: %v", optErr)
+			_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
+				ChatID:          msg.Chat.ID,
+				MessageThreadID: msg.MessageThreadID,
+				Text:            "Dexgram could not prepare the message for Codex:\n\n" + optErr.Error(),
+			})
+			return
+		}
+		turnID, err = startTurn(ctx, session.client, session.threadID, input, opts)
 		if err != nil {
 			log.Printf("codex turn start failed: %v", err)
 			_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
@@ -59,14 +77,15 @@ func (a *app) handlePrompt(ctx context.Context, b *bot.Bot, msg *models.Message,
 	}
 
 	tgTurn := &telegramTurn{
-		TurnID:          turnID,
-		Queued:          queued,
-		ChatID:          msg.Chat.ID,
-		MessageThreadID: msg.MessageThreadID,
-		Text:            displayText,
-		Input:           input,
-		Buffers:         map[string]string{},
-		SentFiles:       map[string]bool{},
+		TurnID:            turnID,
+		Queued:            queued,
+		ChatID:            msg.Chat.ID,
+		MessageThreadID:   msg.MessageThreadID,
+		Text:              displayText,
+		Input:             input,
+		CollaborationMode: normalizeCollaborationMode(collaborationMode),
+		Buffers:           map[string]string{},
+		SentFiles:         map[string]bool{},
 	}
 	if queued {
 		actionToken := a.rememberTurnAction(key, turnID)
@@ -79,7 +98,8 @@ func (a *app) handlePrompt(ctx context.Context, b *bot.Bot, msg *models.Message,
 				ChatID:                   msg.Chat.ID,
 				AllowSendingWithoutReply: true,
 			},
-			ReplyMarkup: turnControlMarkup(actionToken, true),
+			ReplyMarkup:         turnControlMarkup(actionToken, true),
+			DisableNotification: true,
 		})
 		if err == nil {
 			tgTurn.StatusMessageID = status.ID
@@ -87,10 +107,11 @@ func (a *app) handlePrompt(ctx context.Context, b *bot.Bot, msg *models.Message,
 	} else {
 		actionToken := a.rememberTurnAction(key, turnID)
 		status, err := b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID:          msg.Chat.ID,
-			MessageThreadID: msg.MessageThreadID,
-			Text:            "Dexgram is thinking...",
-			ReplyMarkup:     turnControlMarkup(actionToken, false),
+			ChatID:              msg.Chat.ID,
+			MessageThreadID:     msg.MessageThreadID,
+			Text:                "Dexgram is thinking...",
+			ReplyMarkup:         turnControlMarkup(actionToken, false),
+			DisableNotification: true,
 		})
 		if err == nil {
 			tgTurn.StatusMessageID = status.ID

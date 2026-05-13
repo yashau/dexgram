@@ -15,21 +15,22 @@ import (
 )
 
 type app struct {
-	cfg          *config.Config
-	bot          *bot.Bot
-	store        *state.Store
-	mu           sync.Mutex
-	projectsMu   sync.RWMutex
-	active       map[string]*activeTurn
-	actions      map[string]turnAction
-	approvals    map[string]*pendingApproval
-	inputs       map[string]*pendingInput
-	approvalSeq  atomic.Int64
-	actionSeq    atomic.Int64
-	queueSeq     atomic.Int64
-	inputSeq     atomic.Int64
-	projects     []codexprojects.Project
-	lastTypingAt time.Time
+	cfg                   *config.Config
+	bot                   *bot.Bot
+	store                 *state.Store
+	mu                    sync.Mutex
+	projectsMu            sync.RWMutex
+	active                map[string]*activeTurn
+	actions               map[string]turnAction
+	approvals             map[string]*pendingApproval
+	inputs                map[string]*pendingInput
+	approvalSeq           atomic.Int64
+	actionSeq             atomic.Int64
+	queueSeq              atomic.Int64
+	inputSeq              atomic.Int64
+	projects              []codexprojects.Project
+	lastTypingAt          time.Time
+	typingSuppressedUntil map[string]time.Time
 }
 
 type activeTurn struct {
@@ -46,22 +47,23 @@ type activeTurn struct {
 }
 
 type telegramTurn struct {
-	TurnID           string
-	Queued           bool
-	ChatID           int64
-	MessageThreadID  int
-	StatusMessageID  int
-	Text             string
-	Input            []map[string]any
-	LastAgent        string
-	FinalAnswer      string
-	Buffers          map[string]string
-	Initial          *liveTextMessage
-	RunLog           *runLog
-	SentFiles        map[string]bool
-	CompactionDraft  *liveTextMessage
-	CompactionItemID string
-	CompactionCancel context.CancelFunc
+	TurnID            string
+	Queued            bool
+	ChatID            int64
+	MessageThreadID   int
+	StatusMessageID   int
+	Text              string
+	Input             []map[string]any
+	CollaborationMode string
+	LastAgent         string
+	FinalAnswer       string
+	Buffers           map[string]string
+	Initial           *liveTextMessage
+	RunLog            *runLog
+	SentFiles         map[string]bool
+	CompactionDraft   *liveTextMessage
+	CompactionItemID  string
+	CompactionCancel  context.CancelFunc
 }
 
 type turnAction struct {

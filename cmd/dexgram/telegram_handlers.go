@@ -91,6 +91,35 @@ func (a *app) handleUpdate(ctx context.Context, b *bot.Bot, update *models.Updat
 		})
 		return
 	}
+	if isCommand && commandName == "plan" {
+		if strings.TrimSpace(commandArg) == "" {
+			_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
+				ChatID:              msg.Chat.ID,
+				MessageThreadID:     msg.MessageThreadID,
+				Text:                "Usage: /plan <message>",
+				DisableNotification: true,
+			})
+			return
+		}
+		goFatal(func() {
+			a.handlePlanPrompt(ctx, b, msg, commandArg)
+		})
+		return
+	}
+	if isCommand && commandName == "settings" {
+		a.handleSettingsCommand(ctx, b, msg)
+		return
+	}
+	if isCommand && commandName == "model" {
+		goFatal(func() {
+			a.handleModelCommand(ctx, b, msg, commandArg)
+		})
+		return
+	}
+	if isCommand && (commandName == "effort" || commandName == "reasoning") {
+		a.handleEffortCommand(ctx, b, msg, commandArg)
+		return
+	}
 	prompt := strings.TrimSpace(msg.Text)
 	if prompt == "" {
 		prompt = strings.TrimSpace(msg.Caption)
@@ -320,6 +349,18 @@ func (a *app) handleCallback(ctx context.Context, b *bot.Bot, query *models.Call
 	}
 	if strings.HasPrefix(query.Data, "ui:") {
 		a.handleUserInputCallback(ctx, b, query)
+		return
+	}
+	if strings.HasPrefix(query.Data, "settings:") {
+		a.handleSettingsCallback(ctx, b, query)
+		return
+	}
+	if strings.HasPrefix(query.Data, "model:") {
+		a.handleModelCallback(ctx, b, query)
+		return
+	}
+	if strings.HasPrefix(query.Data, "effort:") {
+		a.handleEffortCallback(ctx, b, query)
 		return
 	}
 	if !strings.HasPrefix(query.Data, "project:") {

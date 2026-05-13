@@ -10,6 +10,7 @@ import (
 
 	"dexgram/internal/codex"
 
+	tgmd "github.com/eekstunt/telegramify-markdown-go"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
@@ -20,16 +21,24 @@ const (
 )
 
 func sendRichMessage(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, text string) error {
-	for _, chunk := range splitTelegramChunks(text, 3200) {
-		formatted := renderTelegramMarkdown(chunk)
+	return sendRichMessageNotify(ctx, b, chatID, messageThreadID, text, true)
+}
+
+func sendSilentRichMessage(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, text string) error {
+	return sendRichMessageNotify(ctx, b, chatID, messageThreadID, text, false)
+}
+
+func sendRichMessageNotify(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, text string, notify bool) error {
+	for _, message := range renderTelegramMessages(text, 3200) {
 		if err := waitTelegramQueue(ctx, "send rich message", chatID, messageThreadID); err != nil {
 			return err
 		}
 		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID:          chatID,
-			MessageThreadID: messageThreadID,
-			Text:            formatted,
-			ParseMode:       models.ParseModeMarkdown,
+			ChatID:              chatID,
+			MessageThreadID:     messageThreadID,
+			Text:                message.Text,
+			Entities:            message.Entities,
+			DisableNotification: !notify,
 		})
 		if err != nil {
 			logTelegramPressure("send rich message", chatID, messageThreadID, err)
@@ -37,9 +46,10 @@ func sendRichMessage(ctx context.Context, b *bot.Bot, chatID int64, messageThrea
 				return err
 			}
 			_, fallbackErr := b.SendMessage(ctx, &bot.SendMessageParams{
-				ChatID:          chatID,
-				MessageThreadID: messageThreadID,
-				Text:            chunk,
+				ChatID:              chatID,
+				MessageThreadID:     messageThreadID,
+				Text:                message.Text,
+				DisableNotification: !notify,
 			})
 			if fallbackErr != nil {
 				logTelegramPressure("send rich fallback", chatID, messageThreadID, fallbackErr)
@@ -54,15 +64,15 @@ func editRichMessage(ctx context.Context, b *bot.Bot, chatID int64, messageID in
 	if len([]rune(text)) > 3200 {
 		return fmt.Errorf("message too long to edit safely")
 	}
-	formatted := renderTelegramMarkdown(text)
+	rendered := firstRenderedTelegramMessage(text, 3200)
 	if err := waitTelegramQueue(ctx, "edit rich message", chatID, 0); err != nil {
 		return err
 	}
 	_, err := b.EditMessageText(ctx, &bot.EditMessageTextParams{
 		ChatID:    chatID,
 		MessageID: messageID,
-		Text:      formatted,
-		ParseMode: models.ParseModeMarkdown,
+		Text:      rendered.Text,
+		Entities:  rendered.Entities,
 	})
 	if err == nil {
 		return nil
@@ -135,15 +145,17 @@ func (t *telegramTurn) ensureRunLog(ctx context.Context, b *bot.Bot) {
 
 func (m *liveTextMessage) set(text string) {
 	m.text = text
+	rendered := firstRenderedTelegramMessage(text, 3200)
 	if m.messageID == 0 {
 		if err := waitTelegramQueue(m.ctx, "send live text", m.chatID, m.messageThreadID); err != nil {
 			return
 		}
 		msg, err := m.bot.SendMessage(m.ctx, &bot.SendMessageParams{
-			ChatID:          m.chatID,
-			MessageThreadID: m.messageThreadID,
-			Text:            renderTelegramMarkdown(text),
-			ParseMode:       models.ParseModeMarkdown,
+			ChatID:              m.chatID,
+			MessageThreadID:     m.messageThreadID,
+			Text:                rendered.Text,
+			Entities:            rendered.Entities,
+			DisableNotification: true,
 		})
 		if err != nil {
 			logTelegramPressure("send live text", m.chatID, m.messageThreadID, err)
@@ -286,8 +298,10 @@ func (r *runLog) flush() {
 	if len([]rune(text)) > 3500 {
 		text = truncateRunLog(text, 3500)
 	}
-	rendered := "```text\n" + escapeCode(text) + "\n```"
-	if rendered == r.lastRendered {
+	rendered := "```text\n" + text + "\n```"
+	message := firstRenderedTelegramMessage(rendered, 3900)
+	renderHash := telegramMessageHash(message)
+	if renderHash == r.lastRendered {
 		return
 	}
 	if r.messageID == 0 {
@@ -295,10 +309,11 @@ func (r *runLog) flush() {
 			return
 		}
 		msg, err := r.bot.SendMessage(r.ctx, &bot.SendMessageParams{
-			ChatID:          r.chatID,
-			MessageThreadID: r.messageThreadID,
-			Text:            rendered,
-			ParseMode:       models.ParseModeMarkdown,
+			ChatID:              r.chatID,
+			MessageThreadID:     r.messageThreadID,
+			Text:                message.Text,
+			Entities:            message.Entities,
+			DisableNotification: true,
 		})
 		if err != nil {
 			logTelegramPressure("send run log", r.chatID, r.messageThreadID, err)
@@ -306,7 +321,7 @@ func (r *runLog) flush() {
 			return
 		}
 		r.messageID = msg.ID
-		r.lastRendered = rendered
+		r.lastRendered = renderHash
 		r.lastFlush = now
 		return
 	}
@@ -316,19 +331,19 @@ func (r *runLog) flush() {
 	_, err := r.bot.EditMessageText(r.ctx, &bot.EditMessageTextParams{
 		ChatID:    r.chatID,
 		MessageID: r.messageID,
-		Text:      rendered,
-		ParseMode: models.ParseModeMarkdown,
+		Text:      message.Text,
+		Entities:  message.Entities,
 	})
 	if err != nil {
 		if isTelegramNoopEdit(err) {
-			r.lastRendered = rendered
+			r.lastRendered = renderHash
 			return
 		}
 		logTelegramPressure("edit run log", r.chatID, r.messageThreadID, err)
 		log.Printf("edit run log: %v", err)
 		return
 	}
-	r.lastRendered = rendered
+	r.lastRendered = renderHash
 	r.lastFlush = now
 }
 
@@ -488,211 +503,63 @@ func splitTelegramChunks(text string, max int) []string {
 	return chunks
 }
 
-func renderTelegramMarkdown(md string) string {
-	lines := strings.Split(md, "\n")
-	var out strings.Builder
-	inFence := false
-	fenceLang := ""
-	var code []string
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "```") {
-			if inFence {
-				if out.Len() > 0 {
-					out.WriteByte('\n')
-				}
-				out.WriteString("```")
-				if fenceLang != "" {
-					out.WriteString(escapeCode(fenceLang))
-				}
-				out.WriteByte('\n')
-				out.WriteString(escapeCode(strings.Join(code, "\n")))
-				out.WriteString("\n```")
-				inFence = false
-				fenceLang = ""
-				code = nil
-			} else {
-				inFence = true
-				fenceLang = strings.TrimSpace(strings.TrimPrefix(trimmed, "```"))
-				code = nil
-			}
-			continue
-		}
-		if inFence {
-			code = append(code, line)
-			continue
-		}
-		if out.Len() > 0 {
-			out.WriteByte('\n')
-		}
-		out.WriteString(renderTelegramLine(line))
-	}
-	if inFence {
-		if out.Len() > 0 {
-			out.WriteByte('\n')
-		}
-		out.WriteString("```")
-		if fenceLang != "" {
-			out.WriteString(escapeCode(fenceLang))
-		}
-		out.WriteByte('\n')
-		out.WriteString(escapeCode(strings.Join(code, "\n")))
-		out.WriteString("\n```")
-	}
-	return out.String()
+type renderedTelegramMessage struct {
+	Text     string
+	Entities []models.MessageEntity
 }
 
-func renderTelegramLine(line string) string {
-	trimmed := strings.TrimSpace(line)
-	if strings.HasPrefix(trimmed, "> ") {
-		return "> " + renderInlineMarkdown(strings.TrimSpace(strings.TrimPrefix(trimmed, "> ")))
+func renderTelegramMessages(markdown string, max int) []renderedTelegramMessage {
+	if max <= 0 {
+		max = 4096
 	}
-	if strings.HasPrefix(trimmed, "### ") {
-		return "*" + escapeMarkdownV2(strings.TrimSpace(strings.TrimPrefix(trimmed, "### "))) + "*"
+	markdown = strings.TrimSpace(markdown)
+	if markdown == "" {
+		return []renderedTelegramMessage{{Text: " "}}
 	}
-	if strings.HasPrefix(trimmed, "## ") {
-		return "*" + escapeMarkdownV2(strings.TrimSpace(strings.TrimPrefix(trimmed, "## "))) + "*"
+	converted := tgmd.Convert(markdown)
+	chunks := tgmd.Split(tgmd.Message{
+		Text:     converted.Text,
+		Entities: converted.Entities,
+	}, max)
+	out := make([]renderedTelegramMessage, 0, len(chunks))
+	for _, chunk := range chunks {
+		out = append(out, renderedTelegramMessage{
+			Text:     chunk.Text,
+			Entities: convertTelegramEntities(chunk.Entities),
+		})
 	}
-	if strings.HasPrefix(trimmed, "# ") {
-		return "*" + escapeMarkdownV2(strings.TrimSpace(strings.TrimPrefix(trimmed, "# "))) + "*"
+	if len(out) == 0 {
+		return []renderedTelegramMessage{{Text: " "}}
 	}
-	if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ") {
-		return "• " + renderInlineMarkdown(strings.TrimSpace(trimmed[2:]))
-	}
-	if i := orderedBulletIndex(trimmed); i > 0 {
-		return escapeMarkdownV2(trimmed[:i]) + " " + renderInlineMarkdown(strings.TrimSpace(trimmed[i+1:]))
-	}
-	return renderInlineMarkdown(line)
+	return out
 }
 
-func renderInlineMarkdown(s string) string {
-	var out strings.Builder
-	for len(s) > 0 {
-		start, marker := nextInlineMarker(s)
-		if start < 0 {
-			out.WriteString(escapeMarkdownV2(s))
-			break
-		}
-		out.WriteString(escapeMarkdownV2(s[:start]))
-		switch marker {
-		case "`":
-			rest := s[start+1:]
-			end := strings.Index(rest, "`")
-			if end < 0 {
-				out.WriteString("\\`")
-				out.WriteString(escapeMarkdownV2(rest))
-				return out.String()
-			}
-			out.WriteByte('`')
-			out.WriteString(escapeCode(rest[:end]))
-			out.WriteByte('`')
-			s = rest[end+1:]
-		case "[":
-			label, url, ok, advance := parseMarkdownLink(s[start:])
-			if !ok {
-				out.WriteString("\\[")
-				s = s[start+1:]
-				continue
-			}
-			out.WriteByte('[')
-			out.WriteString(escapeMarkdownV2(label))
-			out.WriteString("](")
-			out.WriteString(escapeURL(url))
-			out.WriteByte(')')
-			s = s[start+advance:]
-		case "**":
-			rest := s[start+2:]
-			end := strings.Index(rest, "**")
-			if end < 0 {
-				out.WriteString("\\*\\*")
-				out.WriteString(escapeMarkdownV2(rest))
-				return out.String()
-			}
-			out.WriteByte('*')
-			out.WriteString(renderInlineMarkdown(rest[:end]))
-			out.WriteByte('*')
-			s = rest[end+2:]
-		default:
-			out.WriteString(escapeMarkdownV2(marker))
-			s = s[start+len(marker):]
-		}
+func firstRenderedTelegramMessage(markdown string, max int) renderedTelegramMessage {
+	messages := renderTelegramMessages(markdown, max)
+	if len(messages) == 0 {
+		return renderedTelegramMessage{Text: " "}
 	}
-	return out.String()
+	return messages[0]
 }
 
-func nextInlineMarker(s string) (int, string) {
-	best := -1
-	marker := ""
-	for _, candidate := range []string{"`", "[", "**"} {
-		i := strings.Index(s, candidate)
-		if i >= 0 && (best < 0 || i < best) {
-			best = i
-			marker = candidate
-		}
+func convertTelegramEntities(entities []tgmd.Entity) []models.MessageEntity {
+	out := make([]models.MessageEntity, 0, len(entities))
+	for _, entity := range entities {
+		out = append(out, models.MessageEntity{
+			Type:     models.MessageEntityType(entity.Type),
+			Offset:   entity.Offset,
+			Length:   entity.Length,
+			URL:      entity.URL,
+			Language: entity.Language,
+		})
 	}
-	return best, marker
+	return out
 }
 
-func parseMarkdownLink(s string) (string, string, bool, int) {
-	closeLabel := strings.Index(s, "](")
-	if closeLabel < 1 {
-		return "", "", false, 0
+func telegramMessageHash(message renderedTelegramMessage) string {
+	parts := []string{message.Text}
+	for _, entity := range message.Entities {
+		parts = append(parts, fmt.Sprintf("%s:%d:%d:%s:%s", entity.Type, entity.Offset, entity.Length, entity.URL, entity.Language))
 	}
-	closeURL := strings.Index(s[closeLabel+2:], ")")
-	if closeURL < 1 {
-		return "", "", false, 0
-	}
-	closeURL += closeLabel + 2
-	label := s[1:closeLabel]
-	url := s[closeLabel+2 : closeURL]
-	if strings.TrimSpace(label) == "" || strings.TrimSpace(url) == "" {
-		return "", "", false, 0
-	}
-	return label, url, true, closeURL + 1
-}
-
-func orderedBulletIndex(s string) int {
-	i := 0
-	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
-		i++
-	}
-	if i == 0 || i+1 >= len(s) || s[i] != '.' || s[i+1] != ' ' {
-		return -1
-	}
-	return i
-}
-
-func escapeURL(s string) string {
-	replacer := strings.NewReplacer("\\", "\\\\", ")", "\\)")
-	return replacer.Replace(s)
-}
-
-func escapeMarkdownV2(s string) string {
-	replacer := strings.NewReplacer(
-		"\\", "\\\\",
-		"_", "\\_",
-		"*", "\\*",
-		"[", "\\[",
-		"]", "\\]",
-		"(", "\\(",
-		")", "\\)",
-		"~", "\\~",
-		"`", "\\`",
-		">", "\\>",
-		"#", "\\#",
-		"+", "\\+",
-		"-", "\\-",
-		"=", "\\=",
-		"|", "\\|",
-		"{", "\\{",
-		"}", "\\}",
-		".", "\\.",
-		"!", "\\!",
-	)
-	return replacer.Replace(s)
-}
-
-func escapeCode(s string) string {
-	replacer := strings.NewReplacer("\\", "\\\\", "`", "\\`")
-	return replacer.Replace(s)
+	return strings.Join(parts, "\x00")
 }

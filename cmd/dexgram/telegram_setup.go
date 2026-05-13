@@ -39,6 +39,10 @@ func reconcileCommands(ctx context.Context, b *bot.Bot, chatID int64) error {
 		{Command: "sync", Description: "Mirror completed Codex turns into this topic"},
 		{Command: "steer", Description: "Steer the active Codex turn"},
 		{Command: "goal", Description: "Set the Codex goal for this topic"},
+		{Command: "plan", Description: "Start a Codex Plan Mode turn"},
+		{Command: "settings", Description: "Show Telegram-started Plan Mode settings"},
+		{Command: "model", Description: "Choose the model for Plan Mode"},
+		{Command: "effort", Description: "Choose the reasoning effort for Plan Mode"},
 		{Command: "stop", Description: "Stop the active Codex turn"},
 		{Command: "cancel", Description: "Alias for /stop"},
 	}

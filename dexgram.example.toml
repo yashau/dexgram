@@ -47,6 +47,9 @@ chat_id = 0
 # to existing local files are uploaded after the final text answer.
 upload_final_answer_files = false
 
+# Telegram live status and run-log messages are sent silently. Final answers,
+# approval prompts, and user-input prompts use normal Telegram notifications.
+
 [codex]
 
 # Optional fallback working directory for legacy/stored project mappings only.
@@ -90,3 +93,10 @@ approval_policy = "never"
 #
 # Dexgram defaults to "danger-full-access" for mobile continuity.
 sandbox = "danger-full-access"
+
+# Plan Mode model/reasoning choices are managed from Telegram with:
+#   /settings
+#   /model
+#   /effort
+#
+# Those values are stored in Dexgram's SQLite state, not in this config file.

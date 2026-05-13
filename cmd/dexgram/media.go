@@ -194,18 +194,20 @@ func (a *app) sendOutputFile(ctx context.Context, turn *telegramTurn, path strin
 	file := &models.InputFileUpload{Filename: filepath.Base(path), Data: f}
 	if isImagePath(path) {
 		_, err = a.bot.SendPhoto(ctx, &bot.SendPhotoParams{
-			ChatID:          turn.ChatID,
-			MessageThreadID: turn.MessageThreadID,
-			Photo:           file,
-			Caption:         filepath.Base(path),
+			ChatID:              turn.ChatID,
+			MessageThreadID:     turn.MessageThreadID,
+			Photo:               file,
+			Caption:             filepath.Base(path),
+			DisableNotification: true,
 		})
 		return err
 	}
 	_, err = a.bot.SendDocument(ctx, &bot.SendDocumentParams{
-		ChatID:          turn.ChatID,
-		MessageThreadID: turn.MessageThreadID,
-		Document:        file,
-		Caption:         filepath.Base(path),
+		ChatID:              turn.ChatID,
+		MessageThreadID:     turn.MessageThreadID,
+		Document:            file,
+		Caption:             filepath.Base(path),
+		DisableNotification: true,
 	})
 	return err
 }
