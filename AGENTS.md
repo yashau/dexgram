@@ -58,6 +58,7 @@ Dexgram embeds Windows file metadata through `goversioninfo`.
 The entrypoint contains:
 
 ```go
+//go:generate go run genversion.go
 //go:generate goversioninfo -64 -o resource.syso
 ```
 
@@ -67,9 +68,10 @@ The metadata source is:
 cmd/dexgram/versioninfo.json
 ```
 
-The generated resource file is:
+The generated files are:
 
 ```text
+cmd/dexgram/version.go
 cmd/dexgram/resource.syso
 ```
 
@@ -81,7 +83,7 @@ To change the binary version or author metadata:
 3. Update matching strings under `StringFileInfo`:
    `FileVersion` and `ProductVersion`.
 4. Update author/copyright fields there as needed.
-5. Regenerate the resource:
+5. Regenerate generated version files:
 
 ```powershell
 go generate ./cmd/dexgram

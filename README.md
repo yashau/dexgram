@@ -70,6 +70,16 @@ Run the same checks used by GitHub Actions:
 The script uses the active Go toolchain, installs the pinned `golangci-lint`
 version if needed, then runs gofmt verification, tests, coverage, and lint.
 
+## Releases
+
+`cmd/dexgram/versioninfo.json` is the source of truth for the Dexgram version.
+`go generate ./cmd/dexgram` derives `cmd/dexgram/version.go` and the Windows
+resource from that metadata.
+
+On pushes to `main`, GitHub Actions runs the shared check first. If it passes
+and no GitHub release exists for `v<version>`, CI builds `dexgram.exe`, writes a
+SHA-256 checksum, and publishes both files to a new release.
+
 ## Setup
 
 ### Option 1: Install The Latest Release

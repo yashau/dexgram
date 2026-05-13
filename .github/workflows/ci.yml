@@ -25,3 +25,102 @@ jobs:
       - name: Check
         shell: pwsh
         run: .\scripts\check.ps1
+
+  release:
+    name: Build and release
+    runs-on: windows-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Validate release version
+        id: version
+        shell: pwsh
+        run: |
+          $info = Get-Content .\cmd\dexgram\versioninfo.json -Raw | ConvertFrom-Json
+          $version = [string]$info.StringFileInfo.ProductVersion
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "StringFileInfo.ProductVersion is empty."
+          }
+          if ($version -ne [string]$info.StringFileInfo.FileVersion) {
+            throw "StringFileInfo.FileVersion does not match ProductVersion."
+          }
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "ProductVersion must use MAJOR.MINOR.PATCH."
+          }
+          if ($info.FixedFileInfo.ProductVersion.Build -ne 0) {
+            throw "FixedFileInfo.ProductVersion.Build must be 0 for MAJOR.MINOR.PATCH releases."
+          }
+          $fixed = "$($info.FixedFileInfo.ProductVersion.Major).$($info.FixedFileInfo.ProductVersion.Minor).$($info.FixedFileInfo.ProductVersion.Patch)"
+          if ($version -ne $fixed) {
+            throw "FixedFileInfo.ProductVersion does not match StringFileInfo.ProductVersion."
+          }
+          $fileFixed = "$($info.FixedFileInfo.FileVersion.Major).$($info.FixedFileInfo.FileVersion.Minor).$($info.FixedFileInfo.FileVersion.Patch)"
+          if ($version -ne $fileFixed -or $info.FixedFileInfo.FileVersion.Build -ne 0) {
+            throw "FixedFileInfo.FileVersion does not match ProductVersion."
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=v$version" >> $env:GITHUB_OUTPUT
+
+      - name: Check generated files
+        shell: pwsh
+        run: |
+          go install github.com/josephspurrier/goversioninfo/cmd/goversioninfo@latest
+          $env:Path = "$(go env GOPATH)\bin;$env:Path"
+          go generate ./cmd/dexgram
+          git diff --exit-code -- cmd/dexgram/version.go cmd/dexgram/resource.syso
+
+      - name: Check release
+        id: release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          gh release view $env:TAG --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            "exists=true" >> $env:GITHUB_OUTPUT
+            Write-Host "Release $env:TAG already exists; skipping build and publish."
+          } else {
+            git ls-remote --exit-code --tags origin "refs/tags/$env:TAG" *> $null
+            if ($LASTEXITCODE -eq 0) {
+              throw "Tag $env:TAG exists but no GitHub release exists."
+            }
+            "exists=false" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Build
+        if: steps.release.outputs.exists == 'false'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .\dist | Out-Null
+          go build -trimpath -ldflags="-s -w" -o .\dist\dexgram.exe .\cmd\dexgram
+          $hash = (Get-FileHash .\dist\dexgram.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -Path .\dist\dexgram.exe.sha256 -Value "$hash  dexgram.exe"
+
+      - name: Publish release
+        if: steps.release.outputs.exists == 'false'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create $env:TAG `
+            .\dist\dexgram.exe `
+            .\dist\dexgram.exe.sha256 `
+            --repo $env:GITHUB_REPOSITORY `
+            --target $env:GITHUB_SHA `
+            --title "Dexgram $env:VERSION" `
+            --notes "Automated release for Dexgram $env:VERSION."

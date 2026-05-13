@@ -1,3 +1,4 @@
+//go:generate go run genversion.go
 //go:generate goversioninfo -64 -o resource.syso
 
 package main
