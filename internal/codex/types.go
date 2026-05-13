@@ -1,6 +1,9 @@
 package codex
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+)
 
 type ThreadListResponse struct {
 	Data []Thread `json:"data"`
@@ -64,6 +67,39 @@ type ThreadItem struct {
 	SavedPath        string          `json:"savedPath"`
 	RevisedPrompt    *string         `json:"revisedPrompt"`
 	Changes          []FileChange    `json:"changes"`
+}
+
+func (i *ThreadItem) UnmarshalJSON(data []byte) error {
+	type threadItem ThreadItem
+	var raw struct {
+		*threadItem
+		Result json.RawMessage `json:"result"`
+	}
+	raw.threadItem = (*threadItem)(i)
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	result, err := decodeStringLike(raw.Result)
+	if err != nil {
+		return err
+	}
+	i.Result = result
+	return nil
+}
+
+func decodeStringLike(raw json.RawMessage) (string, error) {
+	if len(raw) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return "", nil
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s, nil
+	}
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, raw); err != nil {
+		return "", err
+	}
+	return compact.String(), nil
 }
 
 type FileChange struct {
