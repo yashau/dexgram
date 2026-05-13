@@ -3,23 +3,23 @@
     "FileVersion": {
       "Major": 0,
       "Minor": 2,
-      "Patch": 0,
+      "Patch": 1,
       "Build": 0
     },
     "ProductVersion": {
       "Major": 0,
       "Minor": 2,
-      "Patch": 0,
+      "Patch": 1,
       "Build": 0
     },
     "FileType": "1"
   },
     "StringFileInfo": {
       "FileDescription": "Telegram bridge for Codex Desktop",
-      "FileVersion": "0.2.0",
+      "FileVersion": "0.2.1",
       "LegalCopyright": "Copyright (c) 2026 Yashau",
       "ProductName": "Dexgram",
-      "ProductVersion": "0.2.0",
+      "ProductVersion": "0.2.1",
     "OriginalFilename": "dexgram.exe",
     "CompanyName": "Yashau",
     "Author": "2026 Yashau"
