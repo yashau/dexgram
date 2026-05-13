@@ -30,14 +30,15 @@ type app struct {
 }
 
 type activeTurn struct {
-	client   *codex.Client
-	threadID string
-	ctx      context.Context
-	cancel   context.CancelFunc
-	conv     state.Conversation
-	turns    map[string]*telegramTurn
-	order    []string
-	typing   bool
+	client         *codex.Client
+	threadID       string
+	ctx            context.Context
+	cancel         context.CancelFunc
+	conv           state.Conversation
+	turns          map[string]*telegramTurn
+	order          []string
+	titleSyncItems map[string]bool
+	typing         bool
 }
 
 type telegramTurn struct {

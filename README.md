@@ -1,5 +1,11 @@
 # Dexgram
 
+[![CI](https://img.shields.io/github/actions/workflow/status/yashau/dexgram/ci.yml?branch=main&style=for-the-badge&label=CI)](https://github.com/yashau/dexgram/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/yashau/dexgram?style=for-the-badge)](https://github.com/yashau/dexgram/releases)
+[![License](https://img.shields.io/github/license/yashau/dexgram?style=for-the-badge)](LICENSE)
+![Windows Only](https://img.shields.io/badge/Windows-Only-0078D4?style=for-the-badge&logo=windows11&logoColor=white)
+[![Go](https://img.shields.io/badge/Go-1.26-00ADD8?style=for-the-badge&logo=go&logoColor=white)](https://go.dev/)
+
 Dexgram is a Windows Telegram bridge for Codex Desktop. It runs as a single
 Windows binary, listens to a private Telegram bot chat with threaded topics
 enabled, and maps each Telegram topic to a Codex thread.

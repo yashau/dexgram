@@ -53,12 +53,13 @@ func (a *app) startTopicSession(ctx context.Context, key string, chatID int64, m
 	}
 
 	session := &activeTurn{
-		client:   c,
-		threadID: conv.CodexThreadID,
-		ctx:      sessionCtx,
-		cancel:   cancel,
-		conv:     conv,
-		turns:    map[string]*telegramTurn{},
+		client:         c,
+		threadID:       conv.CodexThreadID,
+		ctx:            sessionCtx,
+		cancel:         cancel,
+		conv:           conv,
+		turns:          map[string]*telegramTurn{},
+		titleSyncItems: map[string]bool{},
 	}
 	if !a.registerSession(key, session) {
 		cancel()
@@ -169,6 +170,23 @@ func (a *app) syncTopicTitle(ctx context.Context, conv *state.Conversation, c *c
 	conv.TopicTitle = topicName
 	conv.TopicNamed = true
 	return a.store.Upsert(*conv)
+}
+
+func (a *app) syncTopicTitleBestEffort(ctx context.Context, session *activeTurn) {
+	if session.conv.TopicNamed {
+		return
+	}
+	if err := a.syncTopicTitle(ctx, &session.conv, session.client); err != nil {
+		log.Printf("rename telegram topic: %v", err)
+	}
+}
+
+func (a *app) syncTopicTitleForDelta(ctx context.Context, session *activeTurn, itemID, delta string) {
+	if strings.TrimSpace(delta) == "" || session.conv.TopicNamed || session.titleSyncItems[itemID] {
+		return
+	}
+	session.titleSyncItems[itemID] = true
+	a.syncTopicTitleBestEffort(ctx, session)
 }
 
 func projectlessRoot() string {
@@ -400,6 +418,7 @@ func (a *app) collectTopicSession(ctx context.Context, key string, session *acti
 		case "item/agentMessage/delta", "item/plan/delta":
 			var delta codex.AgentMessageDeltaNotification
 			if json.Unmarshal(ev.Params, &delta) == nil {
+				a.syncTopicTitleForDelta(ctx, session, delta.ItemID, delta.Delta)
 				if tgTurn := a.sessionTurn(key, delta.TurnID); tgTurn != nil {
 					tgTurn.Buffers[delta.ItemID] += delta.Delta
 					if tgTurn.isCompactionItemID(delta.ItemID) {
@@ -417,6 +436,11 @@ func (a *app) collectTopicSession(ctx context.Context, key string, session *acti
 			var item codex.ItemCompletedNotification
 			if json.Unmarshal(ev.Params, &item) != nil {
 				continue
+			}
+			if item.Item.Type == "agentMessage" || item.Item.Type == "plan" {
+				if strings.TrimSpace(item.Item.Text) != "" {
+					a.syncTopicTitleBestEffort(ctx, session)
+				}
 			}
 			tgTurn := a.sessionTurn(key, item.TurnID)
 			if tgTurn == nil {
@@ -495,9 +519,7 @@ func (a *app) collectTopicSession(ctx context.Context, key string, session *acti
 					log.Printf("delete status message: %v", err)
 				}
 			}
-			if err := a.syncTopicTitle(ctx, &session.conv, session.client); err != nil {
-				log.Printf("rename telegram topic: %v", err)
-			}
+			a.syncTopicTitleBestEffort(ctx, session)
 			session.conv.LastSyncedTurnID = done.Turn.ID
 			_ = a.store.Upsert(session.conv)
 			a.forgetTurnAction(key, tgTurn.TurnID)

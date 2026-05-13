@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test and lint
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify gofmt
+        shell: pwsh
+        run: |
+          $files = gofmt -l .
+          if ($files) {
+            $files | ForEach-Object { Write-Error "gofmt needed: $_" }
+            exit 1
+          }
+
+      - name: Test
+        shell: pwsh
+        run: go test ./...
+
+      - name: Coverage
+        shell: pwsh
+        run: go test -cover ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12
+          args: ./...
