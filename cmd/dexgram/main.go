@@ -91,6 +91,7 @@ func run() error {
 		return err
 	}
 	defer closeLog()
+	log.Printf("dexgram starting version=%s pid=%d exe=%s args=%q", appVersion, os.Getpid(), os.Args[0], os.Args[1:])
 
 	cfg, err := config.Load(configPath)
 	if err != nil {
@@ -107,7 +108,7 @@ func run() error {
 	}()
 	log.Printf("state path: %s", store.Path())
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signalAwareContext()
 	defer stop()
 
 	app := &app{
@@ -158,8 +159,26 @@ func run() error {
 	} else {
 		log.Printf("listening only in private topic chat_id=%d", cfg.Telegram.ChatID)
 	}
+	log.Printf("telegram polling start")
 	tg.Start(ctx)
+	log.Printf("telegram polling stopped ctx_err=%v", ctx.Err())
 	return nil
+}
+
+func signalAwareContext() (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		select {
+		case sig := <-signals:
+			log.Printf("dexgram received signal: %v", sig)
+			cancel()
+		case <-ctx.Done():
+		}
+		signal.Stop(signals)
+	}()
+	return ctx, cancel
 }
 
 func defaultConfigPath() string {
@@ -181,11 +200,19 @@ func configureLogFile(path string) (func(), error) {
 	if err != nil {
 		return nil, fmt.Errorf("open log file %s: %w", path, err)
 	}
-	log.SetOutput(io.MultiWriter(os.Stderr, f))
+	log.SetOutput(logOutput(f))
 	return func() {
 		log.SetOutput(os.Stderr)
 		_ = f.Close()
 	}, nil
+}
+
+func logOutput(file io.Writer) io.Writer {
+	info, err := os.Stderr.Stat()
+	if err == nil && info.Mode()&os.ModeCharDevice != 0 {
+		return io.MultiWriter(os.Stderr, file)
+	}
+	return file
 }
 
 type lineLimitedLogFile struct {

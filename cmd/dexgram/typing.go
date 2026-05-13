@@ -45,11 +45,15 @@ func (a *app) keepTyping(ctx context.Context, key string, chatID int64, messageT
 				continue
 			}
 		}
+		if err := waitTelegramQueue(ctx, "send typing action", chatID, messageThreadID); err != nil {
+			return
+		}
 		if _, err := a.bot.SendChatAction(ctx, &bot.SendChatActionParams{
 			ChatID:          chatID,
 			MessageThreadID: messageThreadID,
 			Action:          models.ChatActionTyping,
 		}); err != nil && ctx.Err() == nil && !loggedError {
+			logTelegramPressure("send typing action", chatID, messageThreadID, err)
 			loggedError = true
 			log.Printf("send typing action: %v", err)
 		}

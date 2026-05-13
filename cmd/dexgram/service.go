@@ -98,7 +98,7 @@ func serviceInstall() error {
 		if !isAccessDenied(out) {
 			return err
 		}
-		if fallbackErr := installStartupFallback(taskRun); fallbackErr != nil {
+		if fallbackErr := installStartupFallback(taskRun, logPath); fallbackErr != nil {
 			return fmt.Errorf("%w\nstartup fallback failed: %v", err, fallbackErr)
 		}
 		fmt.Printf("installed Startup login item: %s\n", mustStartupEntryPath())
@@ -260,14 +260,18 @@ func currentTaskUser() string {
 	return domain + `\` + user
 }
 
-func installStartupFallback(command string) error {
+func installStartupFallback(command, logPath string) error {
 	path := mustStartupEntryPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create startup directory: %w", err)
 	}
+	runCommand := command
+	if logPath != "" {
+		runCommand += " >> " + quoteCmdArg(logPath) + " 2>&1"
+	}
 	content := "@echo off\r\n" +
 		"rem Dexgram user-login startup fallback\r\n" +
-		"start \"\" /min cmd.exe /d /c " + quoteCmdArg(command) + "\r\n"
+		"start \"\" /min cmd.exe /d /c " + quoteCmdArg(runCommand) + "\r\n"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write startup fallback: %w", err)
 	}
@@ -293,9 +297,17 @@ func startupFallbackInstalled() bool {
 
 func startDexgramDirect() error {
 	cmd := exec.Command(mustServiceExePath(), "-config", mustServiceConfigPath(), "-log", mustServiceLogPath())
+	logFile, err := os.OpenFile(mustServiceLogPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return fmt.Errorf("open service log: %w", err)
+	}
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
 	if err := cmd.Start(); err != nil {
+		_ = logFile.Close()
 		return fmt.Errorf("start Dexgram: %w", err)
 	}
+	_ = logFile.Close()
 	fmt.Printf("started Dexgram process pid=%d\n", cmd.Process.Pid)
 	return cmd.Process.Release()
 }

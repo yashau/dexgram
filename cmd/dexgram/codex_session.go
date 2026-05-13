@@ -396,6 +396,9 @@ func (a *app) handleTopicSessionEvent(ctx context.Context, key string, session *
 		}
 		if json.Unmarshal(ev.Params, &started) == nil {
 			if tgTurn := a.sessionTurn(key, started.Turn.ID); tgTurn != nil && tgTurn.StatusMessageID != 0 {
+				if err := waitTelegramQueue(ctx, "edit status message", tgTurn.ChatID, tgTurn.MessageThreadID); err != nil {
+					return false
+				}
 				_, _ = a.bot.EditMessageText(ctx, &bot.EditMessageTextParams{
 					ChatID:      tgTurn.ChatID,
 					MessageID:   tgTurn.StatusMessageID,
@@ -526,6 +529,9 @@ func (a *app) handleTopicSessionEvent(ctx context.Context, key string, session *
 			a.sendFinalAnswerFiles(ctx, tgTurn, session.conv.CWD, answer)
 		}
 		if sentAsNew && tgTurn.StatusMessageID != 0 {
+			if err := waitTelegramQueue(ctx, "delete status message", tgTurn.ChatID, tgTurn.MessageThreadID); err != nil {
+				return false
+			}
 			if _, err := a.bot.DeleteMessage(ctx, &bot.DeleteMessageParams{
 				ChatID:    tgTurn.ChatID,
 				MessageID: tgTurn.StatusMessageID,

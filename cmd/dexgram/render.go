@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -13,9 +14,17 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
+const (
+	draftMinInterval  = 3 * time.Second
+	runLogMinInterval = 2 * time.Second
+)
+
 func sendRichMessage(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, text string) error {
 	for _, chunk := range splitTelegramChunks(text, 3200) {
 		formatted := renderTelegramMarkdown(chunk)
+		if err := waitTelegramQueue(ctx, "send rich message", chatID, messageThreadID); err != nil {
+			return err
+		}
 		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:          chatID,
 			MessageThreadID: messageThreadID,
@@ -23,12 +32,17 @@ func sendRichMessage(ctx context.Context, b *bot.Bot, chatID int64, messageThrea
 			ParseMode:       models.ParseModeMarkdown,
 		})
 		if err != nil {
+			logTelegramPressure("send rich message", chatID, messageThreadID, err)
+			if err := waitTelegramQueue(ctx, "send rich fallback", chatID, messageThreadID); err != nil {
+				return err
+			}
 			_, fallbackErr := b.SendMessage(ctx, &bot.SendMessageParams{
 				ChatID:          chatID,
 				MessageThreadID: messageThreadID,
 				Text:            chunk,
 			})
 			if fallbackErr != nil {
+				logTelegramPressure("send rich fallback", chatID, messageThreadID, fallbackErr)
 				return fallbackErr
 			}
 		}
@@ -41,6 +55,9 @@ func editRichMessage(ctx context.Context, b *bot.Bot, chatID int64, messageID in
 		return fmt.Errorf("message too long to edit safely")
 	}
 	formatted := renderTelegramMarkdown(text)
+	if err := waitTelegramQueue(ctx, "edit rich message", chatID, 0); err != nil {
+		return err
+	}
 	_, err := b.EditMessageText(ctx, &bot.EditMessageTextParams{
 		ChatID:    chatID,
 		MessageID: messageID,
@@ -50,12 +67,17 @@ func editRichMessage(ctx context.Context, b *bot.Bot, chatID int64, messageID in
 	if err == nil {
 		return nil
 	}
+	logTelegramPressure("edit rich message", chatID, 0, err)
+	if err := waitTelegramQueue(ctx, "edit rich fallback", chatID, 0); err != nil {
+		return err
+	}
 	_, fallbackErr := b.EditMessageText(ctx, &bot.EditMessageTextParams{
 		ChatID:    chatID,
 		MessageID: messageID,
 		Text:      text,
 	})
 	if fallbackErr != nil {
+		logTelegramPressure("edit rich fallback", chatID, 0, fallbackErr)
 		return fallbackErr
 	}
 	return err
@@ -82,6 +104,8 @@ type liveTextMessage struct {
 	draftID         string
 	draftOK         bool
 	draftFailed     bool
+	lastDraftAt     time.Time
+	nextDraftAt     time.Time
 	text            string
 }
 
@@ -112,6 +136,9 @@ func (t *telegramTurn) ensureRunLog(ctx context.Context, b *bot.Bot) {
 func (m *liveTextMessage) set(text string) {
 	m.text = text
 	if m.messageID == 0 {
+		if err := waitTelegramQueue(m.ctx, "send live text", m.chatID, m.messageThreadID); err != nil {
+			return
+		}
 		msg, err := m.bot.SendMessage(m.ctx, &bot.SendMessageParams{
 			ChatID:          m.chatID,
 			MessageThreadID: m.messageThreadID,
@@ -119,6 +146,7 @@ func (m *liveTextMessage) set(text string) {
 			ParseMode:       models.ParseModeMarkdown,
 		})
 		if err != nil {
+			logTelegramPressure("send live text", m.chatID, m.messageThreadID, err)
 			log.Printf("send live text: %v", err)
 			return
 		}
@@ -134,8 +162,18 @@ func (m *liveTextMessage) draft(text string) {
 	if m.messageID != 0 || m.draftFailed {
 		return
 	}
+	now := time.Now()
+	if !m.nextDraftAt.IsZero() && now.Before(m.nextDraftAt) {
+		return
+	}
+	if !m.lastDraftAt.IsZero() && now.Sub(m.lastDraftAt) < draftMinInterval {
+		return
+	}
 	if m.draftID == "" {
 		m.draftID = fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	if err := waitTelegramQueue(m.ctx, "send draft", m.chatID, m.messageThreadID); err != nil {
+		return
 	}
 	_, err := m.bot.SendMessageDraft(m.ctx, &bot.SendMessageDraftParams{
 		ChatID:          m.chatID,
@@ -144,10 +182,15 @@ func (m *liveTextMessage) draft(text string) {
 		Text:            text,
 	})
 	if err != nil {
+		if retryAfter, ok := logTelegramPressure("send draft", m.chatID, m.messageThreadID, err); ok {
+			m.nextDraftAt = time.Now().Add(retryAfter + time.Second)
+			return
+		}
 		m.draftFailed = true
 		log.Printf("send draft: %v", err)
 		return
 	}
+	m.lastDraftAt = now
 	m.draftOK = true
 }
 
@@ -155,10 +198,14 @@ func (m *liveTextMessage) delete() {
 	if m == nil || m.messageID == 0 {
 		return
 	}
+	if err := waitTelegramQueue(m.ctx, "delete live text", m.chatID, m.messageThreadID); err != nil {
+		return
+	}
 	if _, err := m.bot.DeleteMessage(m.ctx, &bot.DeleteMessageParams{
 		ChatID:    m.chatID,
 		MessageID: m.messageID,
 	}); err != nil {
+		logTelegramPressure("delete live text", m.chatID, m.messageThreadID, err)
 		log.Printf("delete live text: %v", err)
 		return
 	}
@@ -214,16 +261,23 @@ func (r *runLog) finish() {
 	if r.messageID == 0 {
 		return
 	}
+	if err := waitTelegramQueue(r.ctx, "delete run log", r.chatID, r.messageThreadID); err != nil {
+		return
+	}
 	if _, err := r.bot.DeleteMessage(r.ctx, &bot.DeleteMessageParams{
 		ChatID:    r.chatID,
 		MessageID: r.messageID,
 	}); err != nil {
+		logTelegramPressure("delete run log", r.chatID, r.messageThreadID, err)
 		log.Printf("delete run log: %v", err)
 	}
 }
 
 func (r *runLog) flush() {
-	r.lastFlush = time.Now()
+	now := time.Now()
+	if r.messageID != 0 && !r.lastFlush.IsZero() && now.Sub(r.lastFlush) < runLogMinInterval {
+		return
+	}
 	lines := make([]string, 0, len(r.lines))
 	for _, entry := range r.lines {
 		lines = append(lines, entry.line)
@@ -237,6 +291,9 @@ func (r *runLog) flush() {
 		return
 	}
 	if r.messageID == 0 {
+		if err := waitTelegramQueue(r.ctx, "send run log", r.chatID, r.messageThreadID); err != nil {
+			return
+		}
 		msg, err := r.bot.SendMessage(r.ctx, &bot.SendMessageParams{
 			ChatID:          r.chatID,
 			MessageThreadID: r.messageThreadID,
@@ -244,11 +301,16 @@ func (r *runLog) flush() {
 			ParseMode:       models.ParseModeMarkdown,
 		})
 		if err != nil {
+			logTelegramPressure("send run log", r.chatID, r.messageThreadID, err)
 			log.Printf("send run log: %v", err)
 			return
 		}
 		r.messageID = msg.ID
 		r.lastRendered = rendered
+		r.lastFlush = now
+		return
+	}
+	if err := waitTelegramQueue(r.ctx, "edit run log", r.chatID, r.messageThreadID); err != nil {
 		return
 	}
 	_, err := r.bot.EditMessageText(r.ctx, &bot.EditMessageTextParams{
@@ -262,10 +324,23 @@ func (r *runLog) flush() {
 			r.lastRendered = rendered
 			return
 		}
+		logTelegramPressure("edit run log", r.chatID, r.messageThreadID, err)
 		log.Printf("edit run log: %v", err)
 		return
 	}
 	r.lastRendered = rendered
+	r.lastFlush = now
+}
+
+func logTelegramPressure(op string, chatID int64, messageThreadID int, err error) (time.Duration, bool) {
+	var rateErr *bot.TooManyRequestsError
+	if !errors.As(err, &rateErr) {
+		return 0, false
+	}
+	retryAfter := time.Duration(rateErr.RetryAfter) * time.Second
+	backoffTelegramQueue(retryAfter + time.Second)
+	log.Printf("telegram pressure op=%q chat_id=%d thread_id=%d retry_after=%s reason=%q", op, chatID, messageThreadID, retryAfter, rateErr.Message)
+	return retryAfter, true
 }
 
 func isTelegramNoopEdit(err error) bool {
