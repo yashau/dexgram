@@ -111,7 +111,7 @@ CREATE TABLE IF NOT EXISTS staged_attachments (
 	return err
 }
 
-func (s *Store) Get(chatID int64, messageThreadID int) (Conversation, bool) {
+func (s *Store) Get(chatID int64, messageThreadID int) (Conversation, bool, error) {
 	row := s.db.QueryRow(`
 SELECT chat_id, message_thread_id, codex_thread_id, project_name, cwd, projectless,
        topic_title, topic_named, last_synced_turn_id, updated_at
@@ -119,12 +119,12 @@ FROM conversations
 WHERE chat_id = ? AND message_thread_id = ?`, chatID, messageThreadID)
 	conv, err := scanConversation(row)
 	if errors.Is(err, sql.ErrNoRows) {
-		return Conversation{}, false
+		return Conversation{}, false, nil
 	}
 	if err != nil {
-		return Conversation{}, false
+		return Conversation{}, false, err
 	}
-	return conv, true
+	return conv, true, nil
 }
 
 func (s *Store) Upsert(conv Conversation) error {

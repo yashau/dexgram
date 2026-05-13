@@ -181,12 +181,7 @@ func serviceRestart() error {
 }
 
 func serviceStatus() error {
-	fmt.Printf("task:   %s\n", serviceTaskName)
-	fmt.Printf("binary: %s\n", mustServiceExePath())
-	fmt.Printf("config: %s\n", mustServiceConfigPath())
-	fmt.Printf("log:    %s\n", mustServiceLogPath())
-	fmt.Printf("state:  %s\n", mustServiceStatePath())
-	fmt.Printf("startup fallback: %s\n\n", mustStartupEntryPath())
+	printServiceStatusHeader(os.Stdout)
 	printDexgramRuntimeStatus()
 	out, err := runSchtasks("/Query", "/TN", serviceTaskName, "/FO", "LIST", "/V")
 	if err != nil {
@@ -204,6 +199,16 @@ func serviceStatus() error {
 		fmt.Println("Startup fallback is not installed")
 	}
 	return nil
+}
+
+func printServiceStatusHeader(w io.Writer) {
+	fmt.Fprintf(w, "task:   %s\n", serviceTaskName)
+	fmt.Fprintf(w, "version: %s\n", appVersion)
+	fmt.Fprintf(w, "binary: %s\n", mustServiceExePath())
+	fmt.Fprintf(w, "config: %s\n", mustServiceConfigPath())
+	fmt.Fprintf(w, "log:    %s\n", mustServiceLogPath())
+	fmt.Fprintf(w, "state:  %s\n", mustServiceStatePath())
+	fmt.Fprintf(w, "startup fallback: %s\n\n", mustStartupEntryPath())
 }
 
 func runSchtasks(args ...string) (string, error) {

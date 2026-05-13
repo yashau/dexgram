@@ -58,6 +58,10 @@ func TestRunLogLineFormatsKnownItems(t *testing.T) {
 			want: "shell: go test ./...",
 		},
 		{
+			item: codex.ThreadItem{Type: "commandExecution", Command: `Get-Content cmd\\dexgram\\main.go`, ExitCode: &exitCode},
+			want: `shell: Get-Content cmd\dexgram\main.go`,
+		},
+		{
 			item: codex.ThreadItem{Type: "fileChange", Changes: []codex.FileChange{{Path: `internal/state/store.go`}}},
 			want: `edit: internal/state/store.go`,
 		},

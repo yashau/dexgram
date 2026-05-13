@@ -352,6 +352,7 @@ func compactPath(path string, max int) string {
 
 func oneLine(s string, max int) string {
 	s = strings.Join(strings.Fields(s), " ")
+	s = strings.ReplaceAll(s, `\\`, `\`)
 	if len([]rune(s)) <= max {
 		return s
 	}

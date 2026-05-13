@@ -60,6 +60,7 @@ func (a *app) startTopicSession(ctx context.Context, key string, chatID int64, m
 		conv:           conv,
 		turns:          map[string]*telegramTurn{},
 		titleSyncItems: map[string]bool{},
+		pendingEvents:  map[string][]codex.Event{},
 	}
 	if !a.registerSession(key, session) {
 		cancel()
@@ -71,7 +72,10 @@ func (a *app) startTopicSession(ctx context.Context, key string, chatID int64, m
 }
 
 func (a *app) topicConversation(chatID int64, messageThreadID int) state.Conversation {
-	conv, ok := a.store.Get(chatID, messageThreadID)
+	conv, ok, err := a.store.Get(chatID, messageThreadID)
+	if err != nil {
+		log.Printf("read topic conversation: %v", err)
+	}
 	if !ok {
 		return state.Conversation{
 			ChatID:          chatID,
@@ -374,161 +378,173 @@ func (a *app) collectTopicSession(ctx context.Context, key string, session *acti
 			return
 		default:
 		}
-		switch ev.Method {
-		case "turn/started":
-			var started struct {
-				ThreadID string     `json:"threadId"`
-				Turn     codex.Turn `json:"turn"`
-			}
-			if json.Unmarshal(ev.Params, &started) == nil {
-				if tgTurn := a.sessionTurn(key, started.Turn.ID); tgTurn != nil && tgTurn.StatusMessageID != 0 {
-					_, _ = a.bot.EditMessageText(ctx, &bot.EditMessageTextParams{
-						ChatID:      tgTurn.ChatID,
-						MessageID:   tgTurn.StatusMessageID,
-						Text:        "Dexgram is thinking...",
-						ReplyMarkup: turnControlMarkup(a.rememberTurnAction(key, tgTurn.TurnID), false),
-					})
-				}
-			}
-		case "item/started":
-			var item codex.ItemStartedNotification
-			if json.Unmarshal(ev.Params, &item) == nil {
-				tgTurn := a.sessionTurn(key, item.TurnID)
-				if tgTurn == nil {
-					continue
-				}
-				if isCompactionNoticeItem(item.Item) {
-					tgTurn.startCompactionDraft(ctx, a.bot, item.Item.ID)
-				} else if isRunLogItem(item.Item) {
-					tgTurn.ensureRunLog(ctx, a.bot)
-					tgTurn.RunLog.start(item.Item)
-				}
-			}
-		case "item/commandExecution/outputDelta", "item/fileChange/outputDelta":
-			var delta codex.CommandOutputDeltaNotification
-			if json.Unmarshal(ev.Params, &delta) == nil {
-				if tgTurn := a.sessionTurn(key, delta.TurnID); tgTurn != nil && tgTurn.RunLog != nil {
-					text := delta.Delta
-					if text == "" {
-						text = delta.Output
-					}
-					tgTurn.RunLog.output(delta.ItemID, text)
-				}
-			}
-		case "item/agentMessage/delta", "item/plan/delta":
-			var delta codex.AgentMessageDeltaNotification
-			if json.Unmarshal(ev.Params, &delta) == nil {
-				a.syncTopicTitleForDelta(ctx, session, delta.ItemID, delta.Delta)
-				if tgTurn := a.sessionTurn(key, delta.TurnID); tgTurn != nil {
-					tgTurn.Buffers[delta.ItemID] += delta.Delta
-					if tgTurn.isCompactionItemID(delta.ItemID) {
-						tgTurn.startCompactionDraft(ctx, a.bot, delta.ItemID)
-						continue
-					}
-					if tgTurn.CompactionCancel != nil {
-						tgTurn.stopCompactionDraft()
-					}
-					tgTurn.ensureInitial(ctx, a.bot)
-					tgTurn.Initial.draft(tgTurn.Buffers[delta.ItemID])
-				}
-			}
-		case "item/completed":
-			var item codex.ItemCompletedNotification
-			if json.Unmarshal(ev.Params, &item) != nil {
-				continue
-			}
-			if item.Item.Type == "agentMessage" || item.Item.Type == "plan" {
-				if strings.TrimSpace(item.Item.Text) != "" {
-					a.syncTopicTitleBestEffort(ctx, session)
-				}
-			}
-			tgTurn := a.sessionTurn(key, item.TurnID)
-			if tgTurn == nil {
-				continue
-			}
-			if tgTurn.isCompactionItemID(item.Item.ID) || isCompactionNoticeItem(item.Item) {
-				tgTurn.stopCompactionDraft()
-				continue
-			}
-			switch item.Item.Type {
-			case "agentMessage":
-				tgTurn.LastAgent = item.Item.Text
-				if item.Item.Phase != nil && *item.Item.Phase == "final_answer" {
-					tgTurn.FinalAnswer = item.Item.Text
-				} else if strings.TrimSpace(item.Item.Text) != "" {
-					tgTurn.ensureInitial(ctx, a.bot)
-					tgTurn.Initial.set(item.Item.Text)
-				}
-			case "plan":
-				if strings.TrimSpace(item.Item.Text) != "" {
-					tgTurn.ensureInitial(ctx, a.bot)
-					tgTurn.Initial.set(item.Item.Text)
-				}
-			default:
-				if isRunLogItem(item.Item) {
-					tgTurn.ensureRunLog(ctx, a.bot)
-					tgTurn.RunLog.complete(item.Item)
-				}
-			}
-		case "turn/completed":
-			var done codex.TurnCompletedNotification
-			if json.Unmarshal(ev.Params, &done) != nil {
-				continue
-			}
-			tgTurn := a.sessionTurn(key, done.Turn.ID)
-			if tgTurn == nil {
-				continue
-			}
-			answer := strings.TrimSpace(tgTurn.FinalAnswer)
-			if answer == "" {
-				answer = strings.TrimSpace(tgTurn.LastAgent)
-			}
-			if answer == "" {
-				answer = "Codex completed without a final text answer."
-			}
-			tgTurn.stopCompactionDraft()
-			if tgTurn.RunLog != nil {
-				tgTurn.RunLog.finish()
-			}
-			if tgTurn.Initial != nil && sameTelegramText(tgTurn.Initial.text, answer) {
-				tgTurn.Initial.delete()
-			}
-			sentAsNew := false
-			finalTextDelivered := false
-			if err := sendRichMessage(ctx, a.bot, tgTurn.ChatID, tgTurn.MessageThreadID, answer); err != nil {
-				log.Printf("send final message: %v", err)
-				if tgTurn.StatusMessageID != 0 {
-					if editErr := editRichMessage(ctx, a.bot, tgTurn.ChatID, tgTurn.StatusMessageID, answer); editErr != nil {
-						log.Printf("edit fallback final message: %v", editErr)
-					} else {
-						finalTextDelivered = true
-					}
-				}
-			} else {
-				sentAsNew = true
-				finalTextDelivered = true
-			}
-			if finalTextDelivered && a.cfg.Telegram.UploadFinalAnswerFiles {
-				a.sendFinalAnswerFiles(ctx, tgTurn, session.conv.CWD, answer)
-			}
-			if sentAsNew && tgTurn.StatusMessageID != 0 {
-				if _, err := a.bot.DeleteMessage(ctx, &bot.DeleteMessageParams{
-					ChatID:    tgTurn.ChatID,
-					MessageID: tgTurn.StatusMessageID,
-				}); err != nil {
-					log.Printf("delete status message: %v", err)
-				}
-			}
-			a.syncTopicTitleBestEffort(ctx, session)
-			session.conv.LastSyncedTurnID = done.Turn.ID
-			_ = a.store.Upsert(session.conv)
-			a.forgetTurnAction(key, tgTurn.TurnID)
-			a.removeSessionTurn(key, tgTurn.TurnID)
-			if a.sessionTurnCount(key) == 0 {
-				return
-			}
-		case "error":
-			log.Printf("codex app-server event error: %s", string(ev.Params))
+		if a.deferUnknownTurnEvent(key, session, ev) {
+			continue
+		}
+		if a.handleTopicSessionEvent(ctx, key, session, ev) {
+			return
 		}
 	}
+}
+
+func (a *app) handleTopicSessionEvent(ctx context.Context, key string, session *activeTurn, ev codex.Event) bool {
+	switch ev.Method {
+	case "turn/started":
+		var started struct {
+			ThreadID string     `json:"threadId"`
+			Turn     codex.Turn `json:"turn"`
+		}
+		if json.Unmarshal(ev.Params, &started) == nil {
+			if tgTurn := a.sessionTurn(key, started.Turn.ID); tgTurn != nil && tgTurn.StatusMessageID != 0 {
+				_, _ = a.bot.EditMessageText(ctx, &bot.EditMessageTextParams{
+					ChatID:      tgTurn.ChatID,
+					MessageID:   tgTurn.StatusMessageID,
+					Text:        "Dexgram is thinking...",
+					ReplyMarkup: turnControlMarkup(a.rememberTurnAction(key, tgTurn.TurnID), false),
+				})
+			}
+		}
+	case "item/started":
+		var item codex.ItemStartedNotification
+		if json.Unmarshal(ev.Params, &item) == nil {
+			tgTurn := a.sessionTurn(key, item.TurnID)
+			if tgTurn == nil {
+				return false
+			}
+			if isCompactionNoticeItem(item.Item) {
+				tgTurn.startCompactionDraft(ctx, a.bot, item.Item.ID)
+			} else if isRunLogItem(item.Item) {
+				tgTurn.ensureRunLog(ctx, a.bot)
+				tgTurn.RunLog.start(item.Item)
+			}
+		}
+	case "item/commandExecution/outputDelta", "item/fileChange/outputDelta":
+		var delta codex.CommandOutputDeltaNotification
+		if json.Unmarshal(ev.Params, &delta) == nil {
+			if tgTurn := a.sessionTurn(key, delta.TurnID); tgTurn != nil && tgTurn.RunLog != nil {
+				text := delta.Delta
+				if text == "" {
+					text = delta.Output
+				}
+				tgTurn.RunLog.output(delta.ItemID, text)
+			}
+		}
+	case "item/agentMessage/delta", "item/plan/delta":
+		var delta codex.AgentMessageDeltaNotification
+		if json.Unmarshal(ev.Params, &delta) == nil {
+			a.syncTopicTitleForDelta(ctx, session, delta.ItemID, delta.Delta)
+			if tgTurn := a.sessionTurn(key, delta.TurnID); tgTurn != nil {
+				tgTurn.Buffers[delta.ItemID] += delta.Delta
+				if tgTurn.isCompactionItemID(delta.ItemID) {
+					tgTurn.startCompactionDraft(ctx, a.bot, delta.ItemID)
+					return false
+				}
+				if tgTurn.CompactionCancel != nil {
+					tgTurn.stopCompactionDraft()
+				}
+				tgTurn.ensureInitial(ctx, a.bot)
+				tgTurn.Initial.draft(tgTurn.Buffers[delta.ItemID])
+			}
+		}
+	case "item/completed":
+		var item codex.ItemCompletedNotification
+		if json.Unmarshal(ev.Params, &item) != nil {
+			return false
+		}
+		if item.Item.Type == "agentMessage" || item.Item.Type == "plan" {
+			if strings.TrimSpace(item.Item.Text) != "" {
+				a.syncTopicTitleBestEffort(ctx, session)
+			}
+		}
+		tgTurn := a.sessionTurn(key, item.TurnID)
+		if tgTurn == nil {
+			return false
+		}
+		if tgTurn.isCompactionItemID(item.Item.ID) || isCompactionNoticeItem(item.Item) {
+			tgTurn.stopCompactionDraft()
+			return false
+		}
+		switch item.Item.Type {
+		case "agentMessage":
+			tgTurn.LastAgent = item.Item.Text
+			if item.Item.Phase != nil && *item.Item.Phase == "final_answer" {
+				tgTurn.FinalAnswer = item.Item.Text
+			} else if strings.TrimSpace(item.Item.Text) != "" {
+				tgTurn.ensureInitial(ctx, a.bot)
+				tgTurn.Initial.set(item.Item.Text)
+			}
+		case "plan":
+			if strings.TrimSpace(item.Item.Text) != "" {
+				tgTurn.ensureInitial(ctx, a.bot)
+				tgTurn.Initial.set(item.Item.Text)
+			}
+		default:
+			if isRunLogItem(item.Item) {
+				tgTurn.ensureRunLog(ctx, a.bot)
+				tgTurn.RunLog.complete(item.Item)
+			}
+		}
+	case "turn/completed":
+		var done codex.TurnCompletedNotification
+		if json.Unmarshal(ev.Params, &done) != nil {
+			return false
+		}
+		tgTurn := a.sessionTurn(key, done.Turn.ID)
+		if tgTurn == nil {
+			return false
+		}
+		answer := strings.TrimSpace(tgTurn.FinalAnswer)
+		if answer == "" {
+			answer = strings.TrimSpace(tgTurn.LastAgent)
+		}
+		if answer == "" {
+			answer = "Codex completed without a final text answer."
+		}
+		tgTurn.stopCompactionDraft()
+		if tgTurn.RunLog != nil {
+			tgTurn.RunLog.finish()
+		}
+		if tgTurn.Initial != nil && sameTelegramText(tgTurn.Initial.text, answer) {
+			tgTurn.Initial.delete()
+		}
+		sentAsNew := false
+		finalTextDelivered := false
+		if err := sendRichMessage(ctx, a.bot, tgTurn.ChatID, tgTurn.MessageThreadID, answer); err != nil {
+			log.Printf("send final message: %v", err)
+			if tgTurn.StatusMessageID != 0 {
+				if editErr := editRichMessage(ctx, a.bot, tgTurn.ChatID, tgTurn.StatusMessageID, answer); editErr != nil {
+					log.Printf("edit fallback final message: %v", editErr)
+				} else {
+					finalTextDelivered = true
+				}
+			}
+		} else {
+			sentAsNew = true
+			finalTextDelivered = true
+		}
+		if finalTextDelivered && a.cfg.Telegram.UploadFinalAnswerFiles {
+			a.sendFinalAnswerFiles(ctx, tgTurn, session.conv.CWD, answer)
+		}
+		if sentAsNew && tgTurn.StatusMessageID != 0 {
+			if _, err := a.bot.DeleteMessage(ctx, &bot.DeleteMessageParams{
+				ChatID:    tgTurn.ChatID,
+				MessageID: tgTurn.StatusMessageID,
+			}); err != nil {
+				log.Printf("delete status message: %v", err)
+			}
+		}
+		a.syncTopicTitleBestEffort(ctx, session)
+		session.conv.LastSyncedTurnID = done.Turn.ID
+		if err := a.store.Upsert(session.conv); err != nil {
+			log.Printf("store sync marker: %v", err)
+		}
+		a.forgetTurnAction(key, tgTurn.TurnID)
+		a.removeSessionTurn(key, tgTurn.TurnID)
+		if a.sessionTurnCount(key) == 0 {
+			return true
+		}
+	case "error":
+		log.Printf("codex app-server event error: %s", string(ev.Params))
+	}
+	return false
 }

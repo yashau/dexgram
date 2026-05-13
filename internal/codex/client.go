@@ -255,7 +255,7 @@ func (c *Client) readStdout() {
 		line := scanner.Bytes()
 		var msg rpcMessage
 		if err := json.Unmarshal(line, &msg); err != nil {
-			c.errs <- fmt.Errorf("decode app-server line: %w", err)
+			c.reportError(fmt.Errorf("decode app-server line: %w", err))
 			continue
 		}
 		if msg.ID != nil {
@@ -280,10 +280,17 @@ func (c *Client) readStdout() {
 		select {
 		case <-c.closed:
 		default:
-			c.errs <- fmt.Errorf("read app-server stdout: %w", err)
+			c.reportError(fmt.Errorf("read app-server stdout: %w", err))
 		}
 	}
 	close(c.events)
+}
+
+func (c *Client) reportError(err error) {
+	select {
+	case c.errs <- err:
+	default:
+	}
 }
 
 func (c *Client) handleServerRequest(id int64, method string, params json.RawMessage) {
@@ -332,7 +339,7 @@ func (c *Client) replyResult(id int64, result any) {
 func (c *Client) readStderr() {
 	scanner := bufio.NewScanner(c.stderr)
 	for scanner.Scan() {
-		c.errs <- fmt.Errorf("app-server stderr: %s", scanner.Text())
+		c.reportError(fmt.Errorf("app-server stderr: %s", scanner.Text()))
 	}
 }
 

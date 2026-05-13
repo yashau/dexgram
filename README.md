@@ -93,6 +93,12 @@ Update later with:
 dexgram update
 ```
 
+Print the installed Dexgram version with:
+
+```powershell
+dexgram version
+```
+
 After a successful update, the installer starts the Dexgram service again from
 the newly installed binary.
 
@@ -141,12 +147,16 @@ Dexgram can install itself as a user-login background process:
 ```powershell
 .\dexgram.exe service install
 .\dexgram.exe service start
+.\dexgram.exe service status
 ```
 
 This is not a Windows Service. It runs in the signed-in user's context so it can
 talk to the same Codex Desktop environment. Dexgram tries a current-user
 scheduled task first; if Windows denies that, it installs a per-user Startup
 folder fallback.
+
+`service status` prints the Dexgram version, fixed paths, runtime process
+state, and Task Scheduler status.
 
 Service paths:
 

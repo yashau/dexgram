@@ -9,7 +9,8 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
-const typingRefreshInterval = 4 * time.Second
+const typingRefreshInterval = 45 * time.Second
+const typingGlobalMinInterval = 5 * time.Second
 
 func (a *app) startTypingIndicator(key string, chatID int64, messageThreadID int) {
 	a.mu.Lock()
@@ -30,16 +31,26 @@ func (a *app) keepTyping(ctx context.Context, key string, chatID int64, messageT
 
 	ticker := time.NewTicker(typingRefreshInterval)
 	defer ticker.Stop()
+	loggedError := false
 
 	for {
 		if a.sessionTurnCount(key) == 0 {
 			return
 		}
+		if !a.reserveTypingAction() {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				continue
+			}
+		}
 		if _, err := a.bot.SendChatAction(ctx, &bot.SendChatActionParams{
 			ChatID:          chatID,
 			MessageThreadID: messageThreadID,
 			Action:          models.ChatActionTyping,
-		}); err != nil && ctx.Err() == nil {
+		}); err != nil && ctx.Err() == nil && !loggedError {
+			loggedError = true
 			log.Printf("send typing action: %v", err)
 		}
 
@@ -49,6 +60,17 @@ func (a *app) keepTyping(ctx context.Context, key string, chatID int64, messageT
 		case <-ticker.C:
 		}
 	}
+}
+
+func (a *app) reserveTypingAction() bool {
+	now := time.Now()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.lastTypingAt.IsZero() && now.Sub(a.lastTypingAt) < typingGlobalMinInterval {
+		return false
+	}
+	a.lastTypingAt = now
+	return true
 }
 
 func (a *app) stopTypingIndicator(key string) {

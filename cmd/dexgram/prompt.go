@@ -90,5 +90,10 @@ func (a *app) handlePrompt(ctx context.Context, b *bot.Bot, msg *models.Message,
 		}
 	}
 	a.addSessionTurn(key, tgTurn)
+	for _, ev := range a.takePendingTurnEvents(key, turnID) {
+		if a.handleTopicSessionEvent(ctx, key, session, ev) {
+			return
+		}
+	}
 	a.startTypingIndicator(key, msg.Chat.ID, msg.MessageThreadID)
 }

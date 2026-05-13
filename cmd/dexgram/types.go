@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"dexgram/internal/codex"
 	"dexgram/internal/codexprojects"
@@ -14,19 +15,20 @@ import (
 )
 
 type app struct {
-	cfg         *config.Config
-	bot         *bot.Bot
-	store       *state.Store
-	mu          sync.Mutex
-	projectsMu  sync.RWMutex
-	active      map[string]*activeTurn
-	actions     map[string]turnAction
-	approvals   map[string]*pendingApproval
-	inputs      map[string]*pendingInput
-	approvalSeq atomic.Int64
-	actionSeq   atomic.Int64
-	inputSeq    atomic.Int64
-	projects    []codexprojects.Project
+	cfg          *config.Config
+	bot          *bot.Bot
+	store        *state.Store
+	mu           sync.Mutex
+	projectsMu   sync.RWMutex
+	active       map[string]*activeTurn
+	actions      map[string]turnAction
+	approvals    map[string]*pendingApproval
+	inputs       map[string]*pendingInput
+	approvalSeq  atomic.Int64
+	actionSeq    atomic.Int64
+	inputSeq     atomic.Int64
+	projects     []codexprojects.Project
+	lastTypingAt time.Time
 }
 
 type activeTurn struct {
@@ -38,6 +40,7 @@ type activeTurn struct {
 	turns          map[string]*telegramTurn
 	order          []string
 	titleSyncItems map[string]bool
+	pendingEvents  map[string][]codex.Event
 	typing         bool
 }
 

@@ -13,7 +13,16 @@ import (
 )
 
 func (a *app) handleSyncCommand(ctx context.Context, b *bot.Bot, msg *models.Message) {
-	conv, ok := a.store.Get(msg.Chat.ID, msg.MessageThreadID)
+	conv, ok, err := a.store.Get(msg.Chat.ID, msg.MessageThreadID)
+	if err != nil {
+		log.Printf("read conversation for sync: %v", err)
+		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:          msg.Chat.ID,
+			MessageThreadID: msg.MessageThreadID,
+			Text:            "Could not read Dexgram state: " + err.Error(),
+		})
+		return
+	}
 	if !ok || conv.CodexThreadID == "" {
 		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:          msg.Chat.ID,

@@ -1,6 +1,11 @@
 package main
 
-import "strconv"
+import (
+	"encoding/json"
+	"strconv"
+
+	"dexgram/internal/codex"
+)
 
 func (a *app) registerSession(key string, session *activeTurn) bool {
 	a.mu.Lock()
@@ -27,6 +32,18 @@ func (a *app) addSessionTurn(key string, turn *telegramTurn) {
 	}
 	session.turns[turn.TurnID] = turn
 	session.order = append(session.order, turn.TurnID)
+}
+
+func (a *app) takePendingTurnEvents(key, turnID string) []codex.Event {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	session := a.active[key]
+	if session == nil || len(session.pendingEvents) == 0 {
+		return nil
+	}
+	events := append([]codex.Event(nil), session.pendingEvents[turnID]...)
+	delete(session.pendingEvents, turnID)
+	return events
 }
 
 func (a *app) sessionTurn(key, turnID string) *telegramTurn {
@@ -109,4 +126,37 @@ func (a *app) release(key string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	delete(a.active, key)
+}
+
+func (a *app) deferUnknownTurnEvent(key string, session *activeTurn, ev codex.Event) bool {
+	turnID := eventTurnID(ev)
+	if turnID == "" || a.sessionTurn(key, turnID) != nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.active[key] != session {
+		return false
+	}
+	if session.pendingEvents == nil {
+		session.pendingEvents = map[string][]codex.Event{}
+	}
+	session.pendingEvents[turnID] = append(session.pendingEvents[turnID], ev)
+	return true
+}
+
+func eventTurnID(ev codex.Event) string {
+	var payload struct {
+		TurnID string `json:"turnId"`
+		Turn   struct {
+			ID string `json:"id"`
+		} `json:"turn"`
+	}
+	if json.Unmarshal(ev.Params, &payload) != nil {
+		return ""
+	}
+	if payload.TurnID != "" {
+		return payload.TurnID
+	}
+	return payload.Turn.ID
 }

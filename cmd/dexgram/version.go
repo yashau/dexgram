@@ -1,3 +1,12 @@
 package main
 
-const appVersion = "0.1.13"
+import (
+	"fmt"
+	"io"
+)
+
+const appVersion = "0.1.14"
+
+func printVersion(w io.Writer) {
+	_, _ = fmt.Fprintf(w, "Dexgram %s\n", appVersion)
+}

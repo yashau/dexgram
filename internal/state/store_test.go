@@ -25,7 +25,10 @@ func TestStoreUpsertGetAndUpdateConversation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, ok := store.Get(123, 7)
+	got, ok, err := store.Get(123, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !ok {
 		t.Fatal("expected conversation to be found")
 	}
@@ -46,7 +49,10 @@ func TestStoreUpsertGetAndUpdateConversation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, ok = store.Get(123, 7)
+	got, ok, err = store.Get(123, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !ok {
 		t.Fatal("expected updated conversation to be found")
 	}
@@ -57,7 +63,9 @@ func TestStoreGetMissingConversation(t *testing.T) {
 	store := openTestStore(t)
 	defer closeTestStore(t, store)
 
-	if _, ok := store.Get(999, 1); ok {
+	if _, ok, err := store.Get(999, 1); err != nil {
+		t.Fatal(err)
+	} else if ok {
 		t.Fatal("expected missing conversation")
 	}
 }

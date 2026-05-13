@@ -2,7 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
+	"time"
+
+	"dexgram/internal/codex"
 )
 
 func TestSessionStateTracksTurnsInOrder(t *testing.T) {
@@ -62,6 +66,56 @@ func TestTurnActionsAreRememberedAndForgotten(t *testing.T) {
 	}
 	if _, ok := app.turnAction(token2); !ok {
 		t.Fatal("expected unrelated action to remain")
+	}
+}
+
+func TestUnknownTurnEventsAreDeferredAndReplayed(t *testing.T) {
+	app := newTestApp()
+	session := &activeTurn{
+		ctx:           context.Background(),
+		turns:         map[string]*telegramTurn{},
+		pendingEvents: map[string][]codex.Event{},
+	}
+	if !app.registerSession("chat:topic", session) {
+		t.Fatal("expected session register")
+	}
+
+	params, err := json.Marshal(map[string]any{
+		"turnId": "turn-1",
+		"item":   map[string]any{"id": "item-1", "type": "plan", "text": "working"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := codex.Event{Method: "item/completed", Params: params}
+	if !app.deferUnknownTurnEvent("chat:topic", session, ev) {
+		t.Fatal("expected event to be deferred")
+	}
+
+	app.addSessionTurn("chat:topic", &telegramTurn{TurnID: "turn-1"})
+	events := app.takePendingTurnEvents("chat:topic", "turn-1")
+	if len(events) != 1 || events[0].Method != ev.Method {
+		t.Fatalf("unexpected deferred events: %#v", events)
+	}
+	if events := app.takePendingTurnEvents("chat:topic", "turn-1"); len(events) != 0 {
+		t.Fatalf("expected deferred events to be consumed: %#v", events)
+	}
+}
+
+func TestTypingActionReservationIsGloballyThrottled(t *testing.T) {
+	app := newTestApp()
+	if !app.reserveTypingAction() {
+		t.Fatal("expected first typing action to be reserved")
+	}
+	if app.reserveTypingAction() {
+		t.Fatal("expected immediate second typing action to be throttled")
+	}
+
+	app.mu.Lock()
+	app.lastTypingAt = time.Now().Add(-typingGlobalMinInterval)
+	app.mu.Unlock()
+	if !app.reserveTypingAction() {
+		t.Fatal("expected typing action after interval to be reserved")
 	}
 }
 

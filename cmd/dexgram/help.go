@@ -25,6 +25,7 @@ Usage
   %[1]s [options]
   %[1]s -check
   %[1]s -config .\dexgram.toml
+  %[1]s version
   %[1]s onboard
   %[1]s update
   %[1]s service <install|start|stop|restart|status|uninstall>
@@ -59,6 +60,11 @@ Update
       Check GitHub for a newer release. If one exists, run the installer in
       update mode, replace %%LOCALAPPDATA%%\Dexgram\dexgram.exe, and skip
       onboarding. After a successful update, start the Dexgram service.
+
+Version
+
+  %[1]s version
+      Print the Dexgram version and exit.
 
 Config
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 
@@ -13,6 +14,16 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
+
+func (a *app) handleUpdateFatal(ctx context.Context, b *bot.Bot, update *models.Update) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			reportFatalPanic(recovered)
+			os.Exit(2)
+		}
+	}()
+	a.handleUpdate(ctx, b, update)
+}
 
 func (a *app) handleUpdate(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if update.CallbackQuery != nil {
@@ -61,7 +72,9 @@ func (a *app) handleUpdate(ctx context.Context, b *bot.Bot, update *models.Updat
 		return
 	}
 	if isCommand && commandName == "sync" {
-		go a.handleSyncCommand(ctx, b, msg)
+		goFatal(func() {
+			a.handleSyncCommand(ctx, b, msg)
+		})
 		return
 	}
 	if isCommand && (commandName == "stop" || commandName == "cancel") {
@@ -73,7 +86,9 @@ func (a *app) handleUpdate(ctx context.Context, b *bot.Bot, update *models.Updat
 		return
 	}
 	if isCommand && commandName == "goal" {
-		go a.handleGoalCommand(ctx, b, msg, commandArg)
+		goFatal(func() {
+			a.handleGoalCommand(ctx, b, msg, commandArg)
+		})
 		return
 	}
 	prompt := strings.TrimSpace(msg.Text)
@@ -82,11 +97,15 @@ func (a *app) handleUpdate(ctx context.Context, b *bot.Bot, update *models.Updat
 	}
 	if prompt == "" {
 		if messageHasAttachment(msg) {
-			go a.handleStageAttachments(ctx, b, msg)
+			goFatal(func() {
+				a.handleStageAttachments(ctx, b, msg)
+			})
 		}
 		return
 	}
-	go a.handlePrompt(ctx, b, msg, prompt)
+	goFatal(func() {
+		a.handlePrompt(ctx, b, msg, prompt)
+	})
 }
 
 func (a *app) allowedChat(chatID int64) bool {
@@ -206,7 +225,16 @@ func (a *app) handlePendingInputReply(ctx context.Context, b *bot.Bot, msg *mode
 }
 
 func (a *app) handleProjectCommand(ctx context.Context, b *bot.Bot, msg *models.Message, text string) {
-	conv, ok := a.store.Get(msg.Chat.ID, msg.MessageThreadID)
+	conv, ok, err := a.store.Get(msg.Chat.ID, msg.MessageThreadID)
+	if err != nil {
+		log.Printf("read conversation for project command: %v", err)
+		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:          msg.Chat.ID,
+			MessageThreadID: msg.MessageThreadID,
+			Text:            "Could not read Dexgram state: " + err.Error(),
+		})
+		return
+	}
 	if ok && conv.CodexThreadID != "" {
 		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:          msg.Chat.ID,
@@ -314,7 +342,15 @@ func (a *app) handleCallback(ctx context.Context, b *bot.Bot, query *models.Call
 	if !a.allowedChat(chatID) {
 		return
 	}
-	conv, ok := a.store.Get(chatID, threadID)
+	conv, ok, err := a.store.Get(chatID, threadID)
+	if err != nil {
+		_, _ = b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
+			CallbackQueryID: query.ID,
+			Text:            "Could not read Dexgram state.",
+			ShowAlert:       true,
+		})
+		return
+	}
 	if ok && conv.CodexThreadID != "" {
 		_, _ = b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
 			CallbackQueryID: query.ID,
@@ -531,14 +567,25 @@ func (a *app) handleStopCallback(ctx context.Context, b *bot.Bot, query *models.
 }
 
 func (a *app) setTopicProject(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, project codexprojects.Project, announce bool) {
-	conv, _ := a.store.Get(chatID, messageThreadID)
+	conv, _, err := a.store.Get(chatID, messageThreadID)
+	if err != nil {
+		log.Printf("read conversation before setting project: %v", err)
+	}
 	conv.ChatID = chatID
 	conv.MessageThreadID = messageThreadID
 	conv.ProjectName = project.Name
 	conv.CWD = project.Path
 	conv.Projectless = false
 	conv.TopicNamed = false
-	_ = a.store.Upsert(conv)
+	if err := a.store.Upsert(conv); err != nil {
+		log.Printf("store topic project: %v", err)
+		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:          chatID,
+			MessageThreadID: messageThreadID,
+			Text:            "Project selected, but Dexgram could not save it: " + err.Error(),
+		})
+		return
+	}
 	text := "Project set: " + project.Name + "\n" + project.Path + "\n\nNow send the first message to start the Codex chat."
 	if announce {
 		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
@@ -594,7 +641,15 @@ func (a *app) handleNewCommand(ctx context.Context, b *bot.Bot, msg *models.Mess
 		Projectless:     projectless,
 		TopicTitle:      topic.Name,
 	}
-	_ = a.store.Upsert(conv)
+	if err := a.store.Upsert(conv); err != nil {
+		log.Printf("store new topic: %v", err)
+		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:          msg.Chat.ID,
+			MessageThreadID: topic.MessageThreadID,
+			Text:            "Topic created, but Dexgram could not save its mapping: " + err.Error(),
+		})
+		return
+	}
 	prefix := "New Codex chat ready."
 	if projectName != "" {
 		prefix = "New Codex chat ready for project: " + projectName
@@ -608,7 +663,12 @@ func (a *app) handleNewCommand(ctx context.Context, b *bot.Bot, msg *models.Mess
 
 func (a *app) handleStatusCommand(ctx context.Context, b *bot.Bot, msg *models.Message) {
 	key := fmt.Sprintf("%d:%d", msg.Chat.ID, msg.MessageThreadID)
-	conv, ok := a.store.Get(msg.Chat.ID, msg.MessageThreadID)
+	conv, ok, err := a.store.Get(msg.Chat.ID, msg.MessageThreadID)
+	if err != nil {
+		log.Printf("read conversation for status: %v", err)
+		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{ChatID: msg.Chat.ID, MessageThreadID: msg.MessageThreadID, Text: "Could not read Dexgram state: " + err.Error()})
+		return
+	}
 	var parts []string
 	if ok {
 		parts = append(parts, "Codex thread: "+emptyAs(conv.CodexThreadID, "not started"))
