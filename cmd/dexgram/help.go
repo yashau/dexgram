@@ -28,6 +28,7 @@ Usage
   %[1]s version
   %[1]s onboard
   %[1]s telegram chatid add <chat_id_or_pairing_code>
+  %[1]s telegram token update
   %[1]s update
   %[1]s service <install|start|stop|restart|status|uninstall>
 
@@ -75,6 +76,7 @@ Telegram Config
   %[1]s telegram chatid add <chat_id_or_pairing_code>
   %[1]s telegram chatid del <chat_id>
   %[1]s telegram chatid clear
+  %[1]s telegram token update
   %[1]s tg id add <chat_id_or_pairing_code>
       Update [telegram].chat_ids in the Dexgram TOML config without opening the
       file by hand. add accepts the short-lived pairing code the bot sends,
@@ -85,6 +87,11 @@ Telegram Config
       a non-default config.
       Telegram slash commands are registered only for configured chats.
       The running bot reloads config changes from disk.
+
+  %[1]s telegram token update
+      Prompt for a replacement [telegram].bot_token without putting it in shell
+      history. The running bot reloads the config and reconnects with the new
+      token.
 
 Config
 

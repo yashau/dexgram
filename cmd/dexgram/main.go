@@ -137,51 +137,87 @@ func run() error {
 			return err
 		}
 	}
-	tg, err := bot.New(cfg.Telegram.BotToken,
-		bot.WithDefaultHandler(app.handleUpdateFatal),
-		bot.WithErrorsHandler(func(err error) {
-			log.Printf("telegram error: %v", err)
-		}),
-	)
-	if err != nil {
-		return err
-	}
-	app.bot = tg
+	return app.runTelegram(ctx, checkOnly)
+}
 
-	me, err := tg.GetMe(ctx)
-	if err != nil {
-		return fmt.Errorf("get bot identity: %w", err)
-	}
-	log.Printf("connected to Telegram as @%s (%d)", me.Username, me.ID)
+func (a *app) runTelegram(ctx context.Context, checkOnly bool) error {
+	pendingUpdateNoticeSent := false
+	for {
+		cfg := a.cfg
+		tg, err := bot.New(cfg.Telegram.BotToken,
+			bot.WithDefaultHandler(a.handleUpdateFatal),
+			bot.WithErrorsHandler(func(err error) {
+				log.Printf("telegram error: %v", err)
+			}),
+		)
+		if err != nil {
+			return err
+		}
+		a.bot = tg
 
-	if err := ensureThreadedMode(ctx, tg, me, cfg.Telegram.ChatIDs); err != nil {
-		return err
-	}
+		me, err := tg.GetMe(ctx)
+		if err != nil {
+			return fmt.Errorf("get bot identity: %w", err)
+		}
+		log.Printf("connected to Telegram as @%s (%d)", me.Username, me.ID)
 
-	if err := reconcileCommands(ctx, tg, cfg.Telegram.ChatIDs); err != nil {
-		return err
-	}
-	log.Printf("telegram slash commands reconciled")
-	log.Printf("codex mode approval_policy=%s sandbox=%s", cfg.Codex.ApprovalPolicy, cfg.Codex.Sandbox)
+		if err := ensureThreadedMode(ctx, tg, me, cfg.Telegram.ChatIDs); err != nil {
+			return err
+		}
 
-	if checkOnly {
-		log.Printf("telegram setup check passed")
-		return nil
-	}
+		if err := reconcileCommands(ctx, tg, cfg.Telegram.ChatIDs); err != nil {
+			return err
+		}
+		log.Printf("telegram slash commands reconciled")
+		log.Printf("codex mode approval_policy=%s sandbox=%s", cfg.Codex.ApprovalPolicy, cfg.Codex.Sandbox)
 
-	if err := app.sendPendingUpdateNotice(ctx, tg); err != nil {
-		log.Printf("send pending update notice: %v", err)
-	}
+		if checkOnly {
+			log.Printf("telegram setup check passed")
+			return nil
+		}
 
-	if len(cfg.Telegram.ChatIDs) == 0 {
-		log.Printf("telegram.chat_ids is empty; unauthorized-chat setup replies enabled; Codex prompts are disabled until a chat is added")
-	} else {
-		log.Printf("listening only in registered Telegram chats=%v", cfg.Telegram.ChatIDs)
+		if !pendingUpdateNoticeSent {
+			if err := a.sendPendingUpdateNotice(ctx, tg); err != nil {
+				log.Printf("send pending update notice: %v", err)
+			}
+			pendingUpdateNoticeSent = true
+		}
+
+		if len(cfg.Telegram.ChatIDs) == 0 {
+			log.Printf("telegram.chat_ids is empty; unauthorized-chat setup replies enabled; Codex prompts are disabled until a chat is added")
+		} else {
+			log.Printf("listening only in registered Telegram chats=%v", cfg.Telegram.ChatIDs)
+		}
+
+		pollCtx, cancelPoll := context.WithCancel(ctx)
+		restart := make(chan struct{}, 1)
+		go a.watchConfigChanges(pollCtx, tg, restart)
+
+		stopped := make(chan struct{})
+		go func() {
+			log.Printf("telegram polling start")
+			tg.Start(pollCtx)
+			log.Printf("telegram polling stopped ctx_err=%v", pollCtx.Err())
+			close(stopped)
+		}()
+
+		select {
+		case <-ctx.Done():
+			cancelPoll()
+			<-stopped
+			return nil
+		case <-restart:
+			log.Printf("telegram bot token changed; restarting Telegram poller")
+			cancelPoll()
+			<-stopped
+		case <-stopped:
+			cancelPoll()
+			if ctx.Err() != nil {
+				return nil
+			}
+			return nil
+		}
 	}
-	log.Printf("telegram polling start")
-	tg.Start(ctx)
-	log.Printf("telegram polling stopped ctx_err=%v", ctx.Err())
-	return nil
 }
 
 func signalAwareContext() (context.Context, context.CancelFunc) {

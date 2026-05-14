@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"io"
@@ -21,9 +22,11 @@ func runTelegramCommand(args []string) error {
 		return nil
 	}
 
-	switch args[0] {
+	switch strings.ToLower(strings.TrimSpace(args[0])) {
 	case "chatid", "chat-id", "id":
 		return runTelegramChatIDCommand(args[1:], os.Stdout)
+	case "token", "bot-token":
+		return runTelegramTokenCommand(args[1:], os.Stdin, os.Stdout)
 	default:
 		return fmt.Errorf("unknown telegram command %q; run %s telegram --help", args[0], filepath.Base(os.Args[0]))
 	}
@@ -37,6 +40,7 @@ Usage
   %[1]s telegram chatid add <chat_id_or_pairing_code>
   %[1]s telegram chatid del <chat_id>
   %[1]s telegram chatid clear
+  %[1]s telegram token update
   %[1]s tg id add <chat_id_or_pairing_code>
 
 Options
@@ -53,6 +57,7 @@ Examples
   %[1]s telegram chatid add abc234
   %[1]s telegram chatid del 123456789
   %[1]s telegram chatid clear
+  %[1]s telegram token update
 
 `, exe)
 }
@@ -231,4 +236,58 @@ func applyTelegramChatIDAction(ids []int64, action telegramChatIDAction, chatID 
 	default:
 		return ids
 	}
+}
+
+func runTelegramTokenCommand(args []string, in io.Reader, out io.Writer) error {
+	var configPath string
+	fs := flag.NewFlagSet("telegram token", flag.ContinueOnError)
+	fs.SetOutput(out)
+	fs.StringVar(&configPath, "config", defaultConfigPath(), "path to Dexgram TOML config")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	action, err := parseTelegramTokenAction(fs.Args())
+	if err != nil {
+		return err
+	}
+
+	if _, err := os.Stat(configPath); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("config file not found: %s; run %s onboard first", configPath, filepath.Base(os.Args[0]))
+		}
+		return fmt.Errorf("read config metadata: %w", err)
+	}
+	cfg, err := loadOnboardConfig(configPath)
+	if err != nil {
+		return err
+	}
+
+	switch action {
+	case "update":
+		reader := bufio.NewReader(in)
+		token, err := promptRequired(reader, out, "Telegram bot token/id from @BotFather", cfg.Telegram.BotToken)
+		if err != nil {
+			return err
+		}
+		cfg.Telegram.BotToken = strings.TrimSpace(token)
+	default:
+		return fmt.Errorf("unknown token action %q", action)
+	}
+	applyOnboardDefaults(&cfg)
+	if err := writeOnboardConfig(configPath, cfg); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(out, "\nUpdated Telegram bot token in %s\n", configPath)
+	return nil
+}
+
+func parseTelegramTokenAction(args []string) (string, error) {
+	if len(args) == 0 {
+		return "", fmt.Errorf("usage: %s telegram token update", filepath.Base(os.Args[0]))
+	}
+	action := strings.ToLower(strings.TrimSpace(args[0]))
+	if len(args) != 1 || action != "update" {
+		return "", fmt.Errorf("usage: %s telegram token update", filepath.Base(os.Args[0]))
+	}
+	return action, nil
 }

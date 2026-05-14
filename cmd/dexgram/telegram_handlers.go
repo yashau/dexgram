@@ -26,7 +26,6 @@ func (a *app) handleUpdateFatal(ctx context.Context, b *bot.Bot, update *models.
 }
 
 func (a *app) handleUpdate(ctx context.Context, b *bot.Bot, update *models.Update) {
-	a.reloadConfigIfChanged(ctx, b)
 	if update.CallbackQuery != nil {
 		a.handleCallback(ctx, b, update.CallbackQuery)
 		return

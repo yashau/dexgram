@@ -173,6 +173,12 @@ To remove one registered chat or clear all registered chats later:
 .\dexgram.exe telegram chatid clear
 ```
 
+To rotate the bot token without putting it in shell history:
+
+```powershell
+.\dexgram.exe telegram token update
+```
+
 Validate the setup:
 
 ```powershell

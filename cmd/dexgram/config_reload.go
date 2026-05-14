@@ -20,6 +20,11 @@ type configFileState struct {
 	size    int64
 }
 
+type configReloadResult struct {
+	reloaded        bool
+	botTokenChanged bool
+}
+
 func statConfigFile(path string) (configFileState, error) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -32,20 +37,40 @@ func (s configFileState) equal(other configFileState) bool {
 	return s.size == other.size && s.modTime.Equal(other.modTime)
 }
 
-func (a *app) reloadConfigIfChanged(ctx context.Context, b *bot.Bot) {
+func (a *app) watchConfigChanges(ctx context.Context, b *bot.Bot, restart chan<- struct{}) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			result := a.reloadConfigIfChanged(ctx, b)
+			if result.botTokenChanged {
+				select {
+				case restart <- struct{}{}:
+				default:
+				}
+				return
+			}
+		}
+	}
+}
+
+func (a *app) reloadConfigIfChanged(ctx context.Context, b *bot.Bot) configReloadResult {
 	nextState, err := statConfigFile(a.configPath)
 	if err != nil {
 		log.Printf("check config reload: %v", err)
-		return
+		return configReloadResult{}
 	}
 	if a.configState.equal(nextState) {
-		return
+		return configReloadResult{}
 	}
 
 	next, err := config.Load(a.configPath)
 	if err != nil {
 		log.Printf("reload config: %v", err)
-		return
+		return configReloadResult{}
 	}
 
 	oldChatIDs := append([]int64(nil), a.cfg.Telegram.ChatIDs...)
@@ -55,13 +80,15 @@ func (a *app) reloadConfigIfChanged(ctx context.Context, b *bot.Bot) {
 	log.Printf("reloaded config from %s", a.configPath)
 
 	if oldBotToken != next.Telegram.BotToken {
-		log.Printf("telegram.bot_token changed; restart Dexgram to use the new token")
+		log.Printf("telegram.bot_token changed; reloading Telegram bot")
+		return configReloadResult{reloaded: true, botTokenChanged: true}
 	}
 	if !slices.Equal(config.NormalizeChatIDs(oldChatIDs), config.NormalizeChatIDs(next.Telegram.ChatIDs)) {
 		if err := reconcileChangedCommands(ctx, b, oldChatIDs, next.Telegram.ChatIDs); err != nil {
 			log.Printf("reconcile Telegram commands after config reload: %v", err)
 		}
 	}
+	return configReloadResult{reloaded: true}
 }
 
 func reconcileChangedCommands(ctx context.Context, b *bot.Bot, oldChatIDs, newChatIDs []int64) error {

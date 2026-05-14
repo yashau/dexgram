@@ -234,6 +234,45 @@ func TestNormalizeTelegramPairingCodeAcceptsDashedAndPlainLowercase(t *testing.T
 	}
 }
 
+func TestTelegramTokenUpdatePromptsAndPreservesConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "dexgram.toml")
+	if err := os.WriteFile(path, []byte(`
+[telegram]
+bot_token = "old-token"
+chat_ids = [123, -100456]
+upload_final_answer_files = true
+
+[codex]
+cwd = "C:\\work"
+approval_policy = "on-request"
+sandbox = "workspace-write"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := runTelegramTokenCommand([]string{"-config", path, "update"}, strings.NewReader("new-token\n"), &out); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Telegram.BotToken != "new-token" {
+		t.Fatalf("bot token = %q, want new-token", cfg.Telegram.BotToken)
+	}
+	if len(cfg.Telegram.ChatIDs) != 2 || cfg.Telegram.ChatIDs[0] != 123 || cfg.Telegram.ChatIDs[1] != -100456 {
+		t.Fatalf("chat ids not preserved: %#v", cfg.Telegram.ChatIDs)
+	}
+	if !cfg.Telegram.UploadFinalAnswerFiles || cfg.Codex.CWD != `C:\work` || cfg.Codex.ApprovalPolicy != "on-request" || cfg.Codex.Sandbox != "workspace-write" {
+		t.Fatalf("config not preserved: %+v", cfg)
+	}
+	if !strings.Contains(out.String(), "Updated Telegram bot token") {
+		t.Fatalf("output did not confirm token update: %q", out.String())
+	}
+}
+
 func closeTestStateStore(t *testing.T, store *state.Store) {
 	t.Helper()
 	if err := store.Close(); err != nil {
