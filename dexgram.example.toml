@@ -29,16 +29,17 @@
 # Keep the real token only in dexgram.toml. Do not commit it.
 bot_token = "123456789:replace-me"
 
-# Required for normal operation. Private 1:1 chat id between you and the bot.
+# Required for normal operation. Telegram chat ids allowed to use Dexgram.
 #
-# Set to 0 temporarily to discover the id. With chat_id = 0, Dexgram will log
-# updates from any chat it can see; send the bot a DM and copy the logged
-# chat_id here.
+# Chats not listed here are unauthorized. Dexgram replies to unauthorized chats
+# with the ready-to-run add command and will not pass those messages to Codex.
+# Send the bot a DM, then run:
+#
+#   dexgram telegram chatid add <logged_chat_id>
 #
 # Example private chat ids are positive integers. Supergroup ids are usually
-# negative -100... values, but Dexgram's primary mode is private 1:1 threaded
-# chat, not groups.
-chat_id = 0
+# negative -100... values.
+chat_ids = []
 
 # Optional. Upload local file links from Codex's final answer back to Telegram.
 #

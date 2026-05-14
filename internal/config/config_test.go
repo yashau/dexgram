@@ -27,7 +27,7 @@ func TestLoadFinalAnswerFileUploadsEnabled(t *testing.T) {
 	path := writeTestConfig(t, `
 [telegram]
 bot_token = "token"
-chat_id = 123
+chat_ids = [123, -100456]
 upload_final_answer_files = true
 `)
 
@@ -38,6 +38,9 @@ upload_final_answer_files = true
 
 	if !cfg.Telegram.UploadFinalAnswerFiles {
 		t.Fatal("expected final-answer file uploads to be enabled")
+	}
+	if len(cfg.Telegram.ChatIDs) != 2 || cfg.Telegram.ChatIDs[0] != 123 || cfg.Telegram.ChatIDs[1] != -100456 {
+		t.Fatalf("chat ids = %#v, want [123 -100456]", cfg.Telegram.ChatIDs)
 	}
 }
 
@@ -60,6 +63,9 @@ cli_path = "  C:\\codex\\codex.exe  "
 	if cfg.Telegram.BotToken != "token" {
 		t.Fatalf("bot token was not trimmed: %q", cfg.Telegram.BotToken)
 	}
+	if len(cfg.Telegram.ChatIDs) != 1 || cfg.Telegram.ChatIDs[0] != 123 {
+		t.Fatalf("legacy chat_id was not migrated: %#v", cfg.Telegram.ChatIDs)
+	}
 	if cfg.Codex.CWD != `C:\work\dexgram` {
 		t.Fatalf("cwd was not trimmed: %q", cfg.Codex.CWD)
 	}
@@ -71,6 +77,29 @@ cli_path = "  C:\\codex\\codex.exe  "
 	}
 	if cfg.Codex.Sandbox != "danger-full-access" {
 		t.Fatalf("sandbox default = %q", cfg.Codex.Sandbox)
+	}
+}
+
+func TestLoadNormalizesChatIDs(t *testing.T) {
+	path := writeTestConfig(t, `
+[telegram]
+bot_token = "token"
+chat_ids = [123, 0, -100456, 123]
+`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []int64{123, -100456}
+	if len(cfg.Telegram.ChatIDs) != len(want) {
+		t.Fatalf("chat ids = %#v, want %#v", cfg.Telegram.ChatIDs, want)
+	}
+	for i := range want {
+		if cfg.Telegram.ChatIDs[i] != want[i] {
+			t.Fatalf("chat ids = %#v, want %#v", cfg.Telegram.ChatIDs, want)
+		}
 	}
 }
 

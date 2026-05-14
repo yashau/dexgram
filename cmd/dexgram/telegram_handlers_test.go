@@ -30,13 +30,41 @@ func TestParseTelegramCommand(t *testing.T) {
 
 func TestAllowedChat(t *testing.T) {
 	app := &app{cfg: &config.Config{}}
-	app.cfg.Telegram.ChatID = 0
-	if !app.allowedChat(123) {
-		t.Fatal("chat_id 0 should allow all chats")
+	if app.allowedChat(123) {
+		t.Fatal("empty chat_ids should leave chats unregistered")
 	}
-	app.cfg.Telegram.ChatID = 123
-	if !app.allowedChat(123) || app.allowedChat(456) {
-		t.Fatal("allowedChat did not enforce configured chat id")
+	app.cfg.Telegram.ChatIDs = []int64{123, -100456}
+	if !app.allowedChat(123) || !app.allowedChat(-100456) || app.allowedChat(456) {
+		t.Fatal("allowedChat did not enforce configured chat ids")
+	}
+}
+
+func TestUnregisteredChatMessageIncludesReadyCommand(t *testing.T) {
+	got := unregisteredChatMessage(123456789, "")
+	if !strings.Contains(got, "chat_id:\n123456789") {
+		t.Fatalf("message did not include chat id: %q", got)
+	}
+	if !strings.Contains(got, "dexgram telegram chatid add 123456789") {
+		t.Fatalf("message did not include ready command: %q", got)
+	}
+	if strings.Contains(got, "Codex") {
+		t.Fatalf("unregistered chat message should not route user toward Codex: %q", got)
+	}
+}
+
+func TestTelegramChatIDCommandIncludesConfigWhenCustom(t *testing.T) {
+	got := telegramChatIDCommand(123, `C:\Dexgram\dexgram.toml`)
+	want := `dexgram telegram chatid -config 'C:\Dexgram\dexgram.toml' add 123`
+	if got != want {
+		t.Fatalf("telegramChatIDCommand() = %q, want %q", got, want)
+	}
+}
+
+func TestQuotePowerShellArgEscapesSingleQuotes(t *testing.T) {
+	got := quotePowerShellArg(`C:\Users\O'Brien\dexgram.toml`)
+	want := `'C:\Users\O''Brien\dexgram.toml'`
+	if got != want {
+		t.Fatalf("quotePowerShellArg() = %q, want %q", got, want)
 	}
 }
 

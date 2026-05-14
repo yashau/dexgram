@@ -27,6 +27,7 @@ Usage
   %[1]s -config .\dexgram.toml
   %[1]s version
   %[1]s onboard
+  %[1]s telegram chatid add <chat_id>
   %[1]s update
   %[1]s service <install|start|stop|restart|status|uninstall>
 
@@ -38,10 +39,13 @@ Options
 Setup
 
   1. Run %[1]s onboard to create %%APPDATA%%\Dexgram\dexgram.toml.
-  2. Or copy dexgram.example.toml to dexgram.toml and edit it manually.
+  2. Or copy dexgram.example.toml beside the binary, then run onboard.
   3. Put your Telegram bot token in [telegram].bot_token.
-  4. Put your private bot chat id in [telegram].chat_id.
-     Use chat_id = 0 temporarily to discover it from Dexgram logs.
+  4. Add one or more Telegram chat ids:
+       %[1]s telegram chatid add <chat_id>
+     When a chat is not in chat_ids, Dexgram replies with a ready-to-run add
+     command. Codex prompts and slash commands stay disabled for unauthorized
+     chats.
   5. In @BotFather, open:
        Bot Settings -> Threads Settings
      Enable:
@@ -65,6 +69,19 @@ Version
 
   %[1]s version
       Print the Dexgram version and exit.
+
+Telegram Config
+
+  %[1]s telegram chatid add <chat_id>
+  %[1]s telegram chatid del <chat_id>
+  %[1]s telegram chatid clear
+  %[1]s tg id add <chat_id>
+      Update [telegram].chat_ids in the Dexgram TOML config without opening the
+      file by hand. add accepts positive private chat ids and negative group ids.
+      del removes one id. clear removes all ids, so every incoming chat is
+      unauthorized and receives only setup instructions. Add -config before
+      the action to target a non-default config.
+      Telegram slash commands are registered only for configured chats.
 
 Config
 
@@ -196,9 +213,9 @@ Examples
   Run with explicit config:
     %[1]s -config .\dexgram.toml
 
-  Discover chat id:
-    Set chat_id = 0 in the config, run %[1]s, send the bot a DM,
-    then copy the logged chat_id back into the config.
+  Add a chat id:
+    Run %[1]s, then send the bot a DM from any unauthorized chat.
+    Dexgram replies with the exact %[1]s telegram chatid add command to run.
 
 Notes
 

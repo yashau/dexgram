@@ -54,7 +54,7 @@ Creates or updates:
   %[2]s
 
 Dexgram will ask for the Telegram bot token/id, Codex approval policy, and
-Codex sandbox mode. Existing chat_id, cwd, and cli_path values are preserved.
+Codex sandbox mode. Existing chat_ids, cwd, and cli_path values are preserved.
 
 `, exe, mustServiceConfigPath())
 }
@@ -93,8 +93,8 @@ func runOnboard(in io.Reader, out io.Writer, path string) error {
 
 	_, _ = fmt.Fprintln(out)
 	_, _ = fmt.Fprintf(out, "Wrote %s\n", path)
-	if cfg.Telegram.ChatID == 0 {
-		_, _ = fmt.Fprintln(out, "telegram.chat_id is still 0. Run Dexgram once, DM the bot, then copy the logged chat_id into the config.")
+	if len(cfg.Telegram.ChatIDs) == 0 {
+		_, _ = fmt.Fprintln(out, "telegram.chat_ids is still empty. Run Dexgram once and DM the bot; Dexgram will reply with the command to add that chat.")
 	}
 	_, _ = fmt.Fprintf(out, "Next: %s -check\n", filepath.Base(os.Args[0]))
 	return nil
@@ -118,6 +118,10 @@ func loadOnboardConfig(path string) (config.Config, error) {
 
 func applyOnboardDefaults(cfg *config.Config) {
 	cfg.Telegram.BotToken = strings.TrimSpace(cfg.Telegram.BotToken)
+	if len(cfg.Telegram.ChatIDs) == 0 && cfg.Telegram.ChatID != 0 {
+		cfg.Telegram.ChatIDs = []int64{cfg.Telegram.ChatID}
+	}
+	cfg.Telegram.ChatIDs = config.NormalizeChatIDs(cfg.Telegram.ChatIDs)
 	cfg.Codex.CWD = strings.TrimSpace(cfg.Codex.CWD)
 	cfg.Codex.CLIPath = strings.TrimSpace(cfg.Codex.CLIPath)
 	cfg.Codex.ApprovalPolicy = strings.TrimSpace(cfg.Codex.ApprovalPolicy)
@@ -229,7 +233,7 @@ func writeOnboardConfig(path string, cfg config.Config) error {
 	if err != nil {
 		return fmt.Errorf("open config for writing: %w", err)
 	}
-	encErr := toml.NewEncoder(f).Encode(cfg)
+	encErr := toml.NewEncoder(f).Encode(configForWrite(cfg))
 	closeErr := f.Close()
 	if encErr != nil {
 		return fmt.Errorf("encode config: %w", encErr)
@@ -238,4 +242,26 @@ func writeOnboardConfig(path string, cfg config.Config) error {
 		return fmt.Errorf("close config: %w", closeErr)
 	}
 	return nil
+}
+
+type writableConfig struct {
+	Telegram writableTelegramConfig `toml:"telegram"`
+	Codex    config.CodexConfig     `toml:"codex"`
+}
+
+type writableTelegramConfig struct {
+	BotToken               string  `toml:"bot_token"`
+	ChatIDs                []int64 `toml:"chat_ids"`
+	UploadFinalAnswerFiles bool    `toml:"upload_final_answer_files"`
+}
+
+func configForWrite(cfg config.Config) writableConfig {
+	return writableConfig{
+		Telegram: writableTelegramConfig{
+			BotToken:               cfg.Telegram.BotToken,
+			ChatIDs:                config.NormalizeChatIDs(cfg.Telegram.ChatIDs),
+			UploadFinalAnswerFiles: cfg.Telegram.UploadFinalAnswerFiles,
+		},
+		Codex: cfg.Codex,
+	}
 }

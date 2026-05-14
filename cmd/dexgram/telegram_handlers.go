@@ -36,6 +36,7 @@ func (a *app) handleUpdate(ctx context.Context, b *bot.Bot, update *models.Updat
 	}
 	if !a.allowedChat(msg.Chat.ID) {
 		log.Printf("ignored message from chat_id=%d thread_id=%d", msg.Chat.ID, msg.MessageThreadID)
+		a.replyUnregisteredChat(ctx, b, msg)
 		return
 	}
 	ackTelegramMessage(ctx, b, msg)
@@ -145,7 +146,52 @@ func (a *app) handleUpdate(ctx context.Context, b *bot.Bot, update *models.Updat
 }
 
 func (a *app) allowedChat(chatID int64) bool {
-	return a.cfg.Telegram.ChatID == 0 || chatID == a.cfg.Telegram.ChatID
+	for _, allowed := range a.cfg.Telegram.ChatIDs {
+		if chatID == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *app) replyUnregisteredChat(ctx context.Context, b *bot.Bot, msg *models.Message) {
+	text := unregisteredChatMessage(msg.Chat.ID, a.configPath)
+	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID:              msg.Chat.ID,
+		MessageThreadID:     msg.MessageThreadID,
+		Text:                text,
+		DisableNotification: true,
+		ReplyParameters: &models.ReplyParameters{
+			MessageID:                msg.ID,
+			ChatID:                   msg.Chat.ID,
+			AllowSendingWithoutReply: true,
+		},
+	}); err != nil {
+		log.Printf("send unregistered chat setup reply chat_id=%d: %v", msg.Chat.ID, err)
+	}
+}
+
+func unregisteredChatMessage(chatID int64, configPath string) string {
+	return fmt.Sprintf(
+		"Dexgram does not have this Telegram chat registered yet.\n\n"+
+			"chat_id:\n%d\n\n"+
+			"Run this in PowerShell on the Windows machine running Dexgram:\n\n"+
+			"%s\n\n"+
+			"Then restart Dexgram.",
+		chatID,
+		telegramChatIDCommand(chatID, configPath),
+	)
+}
+
+func telegramChatIDCommand(chatID int64, configPath string) string {
+	if strings.TrimSpace(configPath) == "" || configPath == defaultConfigPath() {
+		return fmt.Sprintf("dexgram telegram chatid add %d", chatID)
+	}
+	return fmt.Sprintf("dexgram telegram chatid -config %s add %d", quotePowerShellArg(configPath), chatID)
+}
+
+func quotePowerShellArg(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 
 func (a *app) handleStageAttachments(ctx context.Context, b *bot.Bot, msg *models.Message) {
@@ -338,6 +384,20 @@ func (a *app) handleProjectCommand(ctx context.Context, b *bot.Bot, msg *models.
 }
 
 func (a *app) handleCallback(ctx context.Context, b *bot.Bot, query *models.CallbackQuery) {
+	if query.Message.Message == nil {
+		return
+	}
+	chatID := query.Message.Message.Chat.ID
+	if !a.allowedChat(chatID) {
+		log.Printf("ignored callback from chat_id=%d data=%q", chatID, query.Data)
+		_, _ = b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
+			CallbackQueryID: query.ID,
+			Text:            "This Telegram chat is not registered with Dexgram.",
+			ShowAlert:       true,
+		})
+		return
+	}
+
 	if strings.HasPrefix(query.Data, "ap:") {
 		a.handleApprovalCallback(ctx, b, query)
 		return
@@ -384,10 +444,6 @@ func (a *app) handleCallback(ctx context.Context, b *bot.Bot, query *models.Call
 	}
 	threadID, err := strconv.Atoi(parts[1])
 	if err != nil {
-		return
-	}
-	chatID := query.Message.Message.Chat.ID
-	if !a.allowedChat(chatID) {
 		return
 	}
 	conv, ok, err := a.store.Get(chatID, threadID)

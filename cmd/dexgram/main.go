@@ -51,6 +51,9 @@ func run() error {
 	if len(os.Args) > 1 && os.Args[1] == "onboard" {
 		return runOnboardCommand(os.Args[2:])
 	}
+	if len(os.Args) > 1 && (os.Args[1] == "telegram" || os.Args[1] == "tg") {
+		return runTelegramCommand(os.Args[2:])
+	}
 	if len(os.Args) > 1 && os.Args[1] == "update" {
 		return runUpdateCommand()
 	}
@@ -114,6 +117,7 @@ func run() error {
 	app := &app{
 		cfg:                   cfg,
 		store:                 store,
+		configPath:            configPath,
 		logPath:               logPath,
 		active:                map[string]*activeTurn{},
 		approvals:             map[string]*pendingApproval{},
@@ -121,8 +125,12 @@ func run() error {
 		inputs:                map[string]*pendingInput{},
 		typingSuppressedUntil: map[string]time.Time{},
 	}
-	if _, err := app.refreshProjects(); err != nil {
-		return err
+	if len(cfg.Telegram.ChatIDs) == 0 {
+		log.Printf("telegram.chat_ids is empty; all chats are unauthorized, skipping Codex project discovery")
+	} else {
+		if _, err := app.refreshProjects(); err != nil {
+			return err
+		}
 	}
 	tg, err := bot.New(cfg.Telegram.BotToken,
 		bot.WithDefaultHandler(app.handleUpdateFatal),
@@ -141,14 +149,14 @@ func run() error {
 	}
 	log.Printf("connected to Telegram as @%s (%d)", me.Username, me.ID)
 
-	if err := ensureThreadedMode(ctx, tg, me, cfg.Telegram.ChatID); err != nil {
+	if err := ensureThreadedMode(ctx, tg, me, cfg.Telegram.ChatIDs); err != nil {
 		return err
 	}
 
-	if err := reconcileCommands(ctx, tg); err != nil {
+	if err := reconcileCommands(ctx, tg, cfg.Telegram.ChatIDs); err != nil {
 		return err
 	}
-	log.Printf("telegram slash commands cleared and registered")
+	log.Printf("telegram slash commands reconciled")
 	log.Printf("codex mode approval_policy=%s sandbox=%s", cfg.Codex.ApprovalPolicy, cfg.Codex.Sandbox)
 
 	if checkOnly {
@@ -160,10 +168,10 @@ func run() error {
 		log.Printf("send pending update notice: %v", err)
 	}
 
-	if cfg.Telegram.ChatID == 0 {
-		log.Printf("telegram.chat_id is 0; logging updates from any chat for discovery")
+	if len(cfg.Telegram.ChatIDs) == 0 {
+		log.Printf("telegram.chat_ids is empty; unauthorized-chat setup replies enabled; Codex prompts are disabled until a chat is added")
 	} else {
-		log.Printf("listening only in private topic chat_id=%d", cfg.Telegram.ChatID)
+		log.Printf("listening only in registered Telegram chats=%v", cfg.Telegram.ChatIDs)
 	}
 	log.Printf("telegram polling start")
 	tg.Start(ctx)

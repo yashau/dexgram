@@ -125,23 +125,46 @@ If you already have `dexgram.exe`, run onboarding yourself:
 .\dexgram.exe onboard
 ```
 
-You can also copy the example config and edit it manually:
+You can also keep a local config beside the binary:
 
 ```powershell
 Copy-Item .\dexgram.example.toml .\dexgram.toml
-notepad .\dexgram.toml
+.\dexgram.exe onboard
 ```
 
-At minimum, set:
+At minimum, Dexgram needs:
 
 ```toml
 [telegram]
 bot_token = "123456789:replace-me"
-chat_id = 0
+chat_ids = []
 ```
 
-Use `chat_id = 0` temporarily to discover your private chat id. Start Dexgram,
-send the bot a DM, then copy the logged `chat_id` into the config.
+Start Dexgram and send the bot a DM from any chat that is not in `chat_ids`.
+Dexgram will not send unauthorized chats to Codex; it will reply with the exact
+command to run, for example:
+
+```powershell
+.\dexgram.exe telegram chatid add <logged_chat_id>
+```
+
+The shorter alias works too:
+
+```powershell
+.\dexgram.exe tg id add <logged_chat_id>
+```
+
+For unauthorized chats, Codex prompts and slash commands stay disabled. If
+`chat_ids` is empty, every chat is unauthorized and receives only setup
+instructions. Once a chat is configured, commands are registered only for
+configured chats. Negative Telegram chat IDs are accepted.
+
+To remove one registered chat or clear all registered chats later:
+
+```powershell
+.\dexgram.exe telegram chatid del <chat_id>
+.\dexgram.exe telegram chatid clear
+```
 
 Validate the setup:
 

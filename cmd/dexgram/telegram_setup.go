@@ -8,16 +8,15 @@ import (
 	"strings"
 
 	"dexgram/internal/codex"
+	"dexgram/internal/config"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
 
-func reconcileCommands(ctx context.Context, b *bot.Bot) error {
-	scopes := []models.BotCommandScope{
-		&models.BotCommandScopeDefault{},
-		&models.BotCommandScopeAllPrivateChats{},
-	}
+func reconcileCommands(ctx context.Context, b *bot.Bot, chatIDs []int64) error {
+	chatIDs = config.NormalizeChatIDs(chatIDs)
+	scopes := telegramCommandClearScopes(chatIDs)
 
 	var errs []error
 	for _, scope := range scopes {
@@ -29,20 +28,34 @@ func reconcileCommands(ctx context.Context, b *bot.Bot) error {
 		return errors.Join(errs...)
 	}
 
-	commands := telegramCommands()
-	if _, err := b.SetMyCommands(ctx, &bot.SetMyCommandsParams{
-		Commands: commands,
-		Scope:    &models.BotCommandScopeDefault{},
-	}); err != nil {
-		return fmt.Errorf("register default commands: %w", err)
+	if len(chatIDs) == 0 {
+		log.Printf("telegram slash commands cleared; no registered chats yet")
+		return nil
 	}
-	if _, err := b.SetMyCommands(ctx, &bot.SetMyCommandsParams{
-		Commands: commands,
-		Scope:    &models.BotCommandScopeAllPrivateChats{},
-	}); err != nil {
-		return fmt.Errorf("register private chat commands: %w", err)
+
+	for _, chatID := range chatIDs {
+		if _, err := b.SetMyCommands(ctx, &bot.SetMyCommandsParams{
+			Commands: telegramCommands(),
+			Scope:    &models.BotCommandScopeChat{ChatID: chatID},
+		}); err != nil {
+			return fmt.Errorf("register chat commands for %d: %w", chatID, err)
+		}
 	}
+	log.Printf("telegram slash commands registered for chat_ids=%v", chatIDs)
 	return nil
+}
+
+func telegramCommandClearScopes(chatIDs []int64) []models.BotCommandScope {
+	scopes := []models.BotCommandScope{
+		&models.BotCommandScopeDefault{},
+		&models.BotCommandScopeAllPrivateChats{},
+		&models.BotCommandScopeAllGroupChats{},
+		&models.BotCommandScopeAllChatAdministrators{},
+	}
+	for _, chatID := range config.NormalizeChatIDs(chatIDs) {
+		scopes = append(scopes, &models.BotCommandScopeChat{ChatID: chatID})
+	}
+	return scopes
 }
 
 func telegramCommands() []models.BotCommand {
@@ -63,7 +76,7 @@ func telegramCommands() []models.BotCommand {
 	}
 }
 
-func ensureThreadedMode(ctx context.Context, b *bot.Bot, me *models.User, chatID int64) error {
+func ensureThreadedMode(ctx context.Context, b *bot.Bot, me *models.User, chatIDs []int64) error {
 	var missing []string
 	if !me.HasTopicsEnabled {
 		missing = append(missing, "Threaded Mode")
@@ -77,7 +90,7 @@ func ensureThreadedMode(ctx context.Context, b *bot.Bot, me *models.User, chatID
 	}
 
 	message := threadedModeSetupMessage(me.Username, missing)
-	if chatID != 0 {
+	for _, chatID := range config.NormalizeChatIDs(chatIDs) {
 		if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: chatID,
 			Text:   message,
