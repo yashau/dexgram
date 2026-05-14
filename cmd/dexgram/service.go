@@ -265,17 +265,21 @@ func installStartupFallback(command, logPath string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create startup directory: %w", err)
 	}
-	runCommand := command
-	if logPath != "" {
-		runCommand += " >> " + quoteCmdArg(logPath) + " 2>&1"
-	}
-	content := "@echo off\r\n" +
-		"rem Dexgram user-login startup fallback\r\n" +
-		"start \"\" /min cmd.exe /d /c " + quoteCmdArg(runCommand) + "\r\n"
+	content := startupFallbackContent(command, logPath)
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write startup fallback: %w", err)
 	}
 	return nil
+}
+
+func startupFallbackContent(command, logPath string) string {
+	runCommand := command
+	if logPath != "" {
+		runCommand += " >> " + quoteCmdArg(logPath) + " 2>&1"
+	}
+	return "@echo off\r\n" +
+		"rem Dexgram user-login startup fallback\r\n" +
+		"start \"\" /min cmd.exe /d /c " + quoteCmdCommand(runCommand) + "\r\n"
 }
 
 func removeStartupFallback() error {
@@ -313,7 +317,12 @@ func startDexgramDirect() error {
 }
 
 func quoteCmdArg(value string) string {
-	return `"` + strings.ReplaceAll(value, `"`, `\"`) + `"`
+	return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
+}
+
+func quoteCmdCommand(value string) string {
+	// cmd.exe /c expects a quoted executable command as ""program" args".
+	return `"` + value + `"`
 }
 
 func printDexgramRuntimeStatus() {
