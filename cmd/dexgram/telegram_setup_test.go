@@ -1,7 +1,10 @@
 package main
 
 import (
+	"strings"
 	"testing"
+
+	"dexgram/internal/codex"
 
 	"github.com/go-telegram/bot/models"
 )
@@ -37,5 +40,82 @@ func TestTelegramCommandClearScopesIncludeChatOnlyWhenRegistered(t *testing.T) {
 	}
 	if scope.ChatID != int64(-100456) {
 		t.Fatalf("chat command scope id = %#v, want -100456", scope.ChatID)
+	}
+}
+
+func TestThreadedModeSetupMessageNamesMissingSettings(t *testing.T) {
+	got := threadedModeSetupMessage("dexgram_bot", []string{"Threaded Mode", "users creating topics"})
+	if !strings.Contains(got, "@dexgram_bot via @BotFather") {
+		t.Fatalf("message missing bot name: %q", got)
+	}
+	if !strings.Contains(got, "Missing: Threaded Mode, users creating topics.") {
+		t.Fatalf("message missing settings: %q", got)
+	}
+
+	got = threadedModeSetupMessage("", []string{"Threaded Mode"})
+	if !strings.Contains(got, "choose @BotFather") {
+		t.Fatalf("message should fall back to BotFather: %q", got)
+	}
+}
+
+func TestTopicTitleBalancesAndTruncatesParts(t *testing.T) {
+	tests := []struct {
+		name        string
+		projectName string
+		chatName    string
+		want        string
+	}{
+		{
+			name:        "one off uses chat name",
+			projectName: " One-off ",
+			chatName:    "  Quick   question  ",
+			want:        "Quick question",
+		},
+		{
+			name:        "missing chat uses project",
+			projectName: "Dexgram",
+			chatName:    "",
+			want:        "Dexgram",
+		},
+		{
+			name:        "balanced title",
+			projectName: "Very Long Project Name For Dexgram",
+			chatName:    "Very Long Chat Topic Name",
+			want:        "Very Long Proj\u2026: Very Long Chat\u2026",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := topicTitle(test.projectName, test.chatName); got != test.want {
+				t.Fatalf("topic title = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestTelegramTopicTitleHelpers(t *testing.T) {
+	if got := threadTitle(codex.Thread{Name: "  Named topic  ", Preview: "preview"}); got != "Named topic" {
+		t.Fatalf("thread title name = %q", got)
+	}
+	if got := threadTitle(codex.Thread{Preview: "  Preview only  "}); got != "Preview only" {
+		t.Fatalf("thread title preview = %q", got)
+	}
+	if got := threadTitle(codex.Thread{}); got != "" {
+		t.Fatalf("empty thread title = %q", got)
+	}
+	if got := truncateTopicPart("abcdef", 3); got != "abc" {
+		t.Fatalf("short truncation = %q", got)
+	}
+	if got := truncateTopicPart("abcdef", 5); got != "abcd\u2026" {
+		t.Fatalf("ellipsis truncation = %q", got)
+	}
+	if got := truncateTopicPart("abcdef", 0); got != "" {
+		t.Fatalf("zero truncation = %q", got)
+	}
+	if got := compactSpaces(" alpha\t beta \n gamma "); got != "alpha beta gamma" {
+		t.Fatalf("compact spaces = %q", got)
+	}
+	if got := runeLen("a\u2026b"); got != 3 {
+		t.Fatalf("rune len = %d", got)
 	}
 }

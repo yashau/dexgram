@@ -1,9 +1,15 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"dexgram/internal/config"
+	"dexgram/internal/state"
+
+	"github.com/go-telegram/bot/models"
 )
 
 func TestFinalAnswerFilePathsOnlyUsesMarkdownLinks(t *testing.T) {
@@ -101,5 +107,91 @@ func TestFilenameAndImageHelpers(t *testing.T) {
 	}
 	if !isImagePath("PHOTO.JPEG") || isImagePath("archive.zip") {
 		t.Fatal("isImagePath returned unexpected result")
+	}
+}
+
+func TestLinkedPathAndPhotoHelpers(t *testing.T) {
+	if got := normalizeLinkedPath(`/C:/Users/Yashau/report.txt`); got != filepath.FromSlash(`C:/Users/Yashau/report.txt`) {
+		t.Fatalf("normalized slash drive path = %q", got)
+	}
+	if got := normalizeLinkedPath(`\D\Temp\file.txt`); got != filepath.FromSlash(`D:\Temp\file.txt`) {
+		t.Fatalf("normalized backslash drive path = %q", got)
+	}
+	if !isASCIILetter('Z') || isASCIILetter('1') {
+		t.Fatal("ASCII letter detection returned unexpected result")
+	}
+
+	photos := []models.PhotoSize{
+		{FileID: "small", Width: 10, Height: 10},
+		{FileID: "wide", Width: 40, Height: 20},
+		{FileID: "tall", Width: 20, Height: 50},
+	}
+	if got := largestPhoto(photos); got.FileID != "tall" {
+		t.Fatalf("largest photo = %#v", got)
+	}
+}
+
+func TestBuildTurnInputIncludesStagedAttachments(t *testing.T) {
+	store, err := state.Open(filepath.Join(t.TempDir(), "dexgram.db"))
+	if err != nil {
+		t.Fatalf("open state store: %v", err)
+	}
+	defer closeTestStateStore(t, store)
+	app := &app{store: store, cfg: &config.Config{}}
+
+	if err := store.AddStagedAttachment(state.StagedAttachment{
+		ChatID:          123,
+		MessageThreadID: 7,
+		MessageID:       40,
+		Path:            `C:\tmp\image.png`,
+		Kind:            "image",
+	}); err != nil {
+		t.Fatalf("add staged image: %v", err)
+	}
+	if err := store.AddStagedAttachment(state.StagedAttachment{
+		ChatID:          123,
+		MessageThreadID: 7,
+		MessageID:       41,
+		Path:            `C:\tmp\notes.txt`,
+		Kind:            "file",
+	}); err != nil {
+		t.Fatalf("add staged file: %v", err)
+	}
+
+	input, display, err := app.buildTurnInput(context.Background(), nil, &models.Message{
+		Chat:            models.Chat{ID: 123},
+		MessageThreadID: 7,
+	}, "review these")
+	if err != nil {
+		t.Fatalf("build turn input: %v", err)
+	}
+	if display != "review these\n\nAttached image: C:\\tmp\\image.png\nAttached file: C:\\tmp\\notes.txt" {
+		t.Fatalf("display text = %q", display)
+	}
+	if len(input) != 3 {
+		t.Fatalf("input count = %d, want 3: %#v", len(input), input)
+	}
+	if input[1]["type"] != "localImage" || input[2]["type"] != "mention" {
+		t.Fatalf("attachment inputs = %#v", input)
+	}
+}
+
+func TestStageMessageAttachmentsNoopsWithoutCurrentAttachments(t *testing.T) {
+	store, err := state.Open(filepath.Join(t.TempDir(), "dexgram.db"))
+	if err != nil {
+		t.Fatalf("open state store: %v", err)
+	}
+	defer closeTestStateStore(t, store)
+	app := &app{store: store}
+
+	count, err := app.stageMessageAttachments(context.Background(), nil, &models.Message{
+		Chat:            models.Chat{ID: 123},
+		MessageThreadID: 7,
+	})
+	if err != nil {
+		t.Fatalf("stage attachments: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("staged attachment count = %d", count)
 	}
 }

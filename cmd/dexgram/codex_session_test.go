@@ -81,6 +81,46 @@ func TestAppServerWorkingDirAndTextInput(t *testing.T) {
 	}
 }
 
+func TestTopicConversationDefaultsAndStoredMappings(t *testing.T) {
+	store, err := state.Open(filepath.Join(t.TempDir(), "dexgram.db"))
+	if err != nil {
+		t.Fatalf("open state store: %v", err)
+	}
+	defer closeTestStateStore(t, store)
+	app := &app{store: store}
+
+	conv := app.topicConversation(123, 7)
+	if conv.ChatID != 123 || conv.MessageThreadID != 7 || !conv.Projectless {
+		t.Fatalf("new topic conversation = %#v", conv)
+	}
+
+	if err := store.Upsert(state.Conversation{
+		ChatID:          123,
+		MessageThreadID: 7,
+		CodexThreadID:   "thread-1",
+		CWD:             `C:\work`,
+	}); err != nil {
+		t.Fatalf("upsert conversation: %v", err)
+	}
+	conv = app.topicConversation(123, 7)
+	if !conv.Projectless {
+		t.Fatalf("stored topic without project should be projectless: %#v", conv)
+	}
+
+	if err := store.Upsert(state.Conversation{
+		ChatID:          123,
+		MessageThreadID: 8,
+		ProjectName:     "Dexgram",
+		CWD:             `C:\dexgram`,
+	}); err != nil {
+		t.Fatalf("upsert project conversation: %v", err)
+	}
+	conv = app.topicConversation(123, 8)
+	if conv.Projectless || conv.ProjectName != "Dexgram" {
+		t.Fatalf("stored project topic = %#v", conv)
+	}
+}
+
 func setCmdTestHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()

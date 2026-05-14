@@ -59,6 +59,15 @@ approval_policy = "on-request"
 	}
 }
 
+func TestRunTelegramCommandHelpAndUnknownSubcommand(t *testing.T) {
+	if err := runTelegramCommand([]string{"--help"}); err != nil {
+		t.Fatalf("telegram help command: %v", err)
+	}
+	if err := runTelegramCommand([]string{"unknown"}); err == nil {
+		t.Fatal("expected unknown telegram subcommand to fail")
+	}
+}
+
 func TestTelegramChatIDCommandRejectsInvalidID(t *testing.T) {
 	var out bytes.Buffer
 	if err := runTelegramChatIDCommand([]string{"add", "not-a-number"}, &out); err == nil {
@@ -231,6 +240,37 @@ func TestNormalizeTelegramPairingCodeAcceptsDashedAndPlainLowercase(t *testing.T
 		if got != "ABC234" {
 			t.Fatalf("normalizeTelegramPairingCode(%q) = %q, want ABC234", value, got)
 		}
+	}
+}
+
+func TestCreateTelegramPairingCodeSavesConsumableCode(t *testing.T) {
+	store, err := state.Open(filepath.Join(t.TempDir(), "dexgram.db"))
+	if err != nil {
+		t.Fatalf("open state store: %v", err)
+	}
+	defer closeTestStateStore(t, store)
+
+	code, err := createTelegramPairingCode(store, -100123)
+	if err != nil {
+		t.Fatalf("create pairing code: %v", err)
+	}
+	formatted := formatTelegramPairingCode(code)
+	if len(formatted) != 7 || formatted[3] != '-' {
+		t.Fatalf("formatted pairing code = %q", formatted)
+	}
+	normalized, err := normalizeTelegramPairingCode(formatted)
+	if err != nil {
+		t.Fatalf("normalize pairing code: %v", err)
+	}
+	chatID, ok, err := store.ConsumeTelegramPairingCode(normalized)
+	if err != nil {
+		t.Fatalf("consume pairing code: %v", err)
+	}
+	if !ok || chatID != -100123 {
+		t.Fatalf("consumed pairing code chat_id=%d ok=%v", chatID, ok)
+	}
+	if _, ok, err := store.ConsumeTelegramPairingCode(normalized); err != nil || ok {
+		t.Fatalf("pairing code should be single use: ok=%v err=%v", ok, err)
 	}
 }
 

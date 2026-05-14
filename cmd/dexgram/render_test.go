@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"dexgram/internal/codex"
+
+	"github.com/go-telegram/bot/models"
 )
 
 func TestRenderTelegramMessagesConvertsMarkdownToEntities(t *testing.T) {
@@ -105,6 +109,63 @@ func TestRunLogHelpersTrimAndTruncate(t *testing.T) {
 	}
 	if got := truncateRunLog("abcdefghijklmnopqrstuvwxyz", 10); got != "...\nuvwxyz" {
 		t.Fatalf("truncateRunLog returned %q", got)
+	}
+}
+
+func TestRenderMessageHashAndTextComparison(t *testing.T) {
+	a := renderedTelegramMessage{Text: "hello", Entities: nil}
+	b := renderedTelegramMessage{Text: "hello", Entities: nil}
+	c := renderedTelegramMessage{Text: "hello", Entities: []models.MessageEntity{{Type: "bold", Offset: 0, Length: 5}}}
+
+	if telegramMessageHash(a) != telegramMessageHash(b) {
+		t.Fatal("identical rendered messages should hash equally")
+	}
+	if telegramMessageHash(a) == telegramMessageHash(c) {
+		t.Fatal("message entities should affect hash")
+	}
+	if !sameTelegramText("line\r\nnext", "line\nnext") {
+		t.Fatal("CRLF and LF text should compare equal")
+	}
+	if sameTelegramText("line one", "line two") {
+		t.Fatal("different text should not compare equal")
+	}
+}
+
+func TestLiveTextAndRunLogSendEditAndDelete(t *testing.T) {
+	oldQueue := defaultTelegramQueue
+	defaultTelegramQueue = newTelegramQueue(0)
+	defer func() {
+		defaultTelegramQueue = oldQueue
+	}()
+
+	b, api := newTelegramTestBot(t)
+	turn := &telegramTurn{ChatID: 123, MessageThreadID: 7}
+	turn.ensureInitial(context.Background(), b)
+	turn.ensureInitial(context.Background(), b)
+	turn.Initial.set("Initial message")
+	turn.Initial.set("Edited message")
+	turn.Initial.delete()
+	if turn.Initial.messageID != 0 {
+		t.Fatalf("initial message id after delete = %d", turn.Initial.messageID)
+	}
+
+	turn.ensureRunLog(context.Background(), b)
+	turn.ensureRunLog(context.Background(), b)
+	turn.RunLog.start(codex.ThreadItem{ID: "cmd-1", Type: "commandExecution", Command: "go test ./..."})
+	turn.RunLog.output("cmd-1", "ignored output")
+	turn.RunLog.lastFlush = time.Now().Add(-runLogMinInterval)
+	exitCode := 0
+	turn.RunLog.complete(codex.ThreadItem{ID: "cmd-1", Type: "commandExecution", Command: "go test ./cmd/dexgram", ExitCode: &exitCode})
+	turn.RunLog.finish()
+
+	if api.count("sendMessage") < 2 {
+		t.Fatalf("sendMessage count = %d, want at least 2", api.count("sendMessage"))
+	}
+	if api.count("editMessageText") < 2 {
+		t.Fatalf("editMessageText count = %d, want at least 2", api.count("editMessageText"))
+	}
+	if api.count("deleteMessage") < 2 {
+		t.Fatalf("deleteMessage count = %d, want at least 2", api.count("deleteMessage"))
 	}
 }
 
