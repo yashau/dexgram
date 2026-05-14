@@ -69,6 +69,12 @@ func (a *app) handleUpdate(ctx context.Context, b *bot.Bot, update *models.Updat
 		a.handleNewCommand(ctx, b, msg, commandText)
 		return
 	}
+	if isCommand && commandName == "side" {
+		goFatal(func() {
+			a.handleSideCommand(ctx, b, msg, commandArg)
+		})
+		return
+	}
 	if isCommand && commandName == "status" {
 		a.handleStatusCommand(ctx, b, msg)
 		return
@@ -786,6 +792,9 @@ func (a *app) handleStatusCommand(ctx context.Context, b *bot.Bot, msg *models.M
 	var parts []string
 	if ok {
 		parts = append(parts, "Codex thread: "+emptyAs(conv.CodexThreadID, "not started"))
+		if conv.SideChat {
+			parts = append(parts, fmt.Sprintf("Side chat: #%d from Telegram thread %d", conv.SideIndex, conv.ParentMessageThreadID))
+		}
 		projectLabel := conv.ProjectName
 		if conv.Projectless || projectLabel == "" {
 			projectLabel = "none"

@@ -17,16 +17,21 @@ type Store struct {
 }
 
 type Conversation struct {
-	ChatID           int64
-	MessageThreadID  int
-	CodexThreadID    string
-	ProjectName      string
-	CWD              string
-	Projectless      bool
-	TopicTitle       string
-	TopicNamed       bool
-	LastSyncedTurnID string
-	UpdatedAt        string
+	ChatID                int64
+	MessageThreadID       int
+	CodexThreadID         string
+	ProjectName           string
+	CWD                   string
+	Projectless           bool
+	TopicTitle            string
+	TopicNamed            bool
+	SideChat              bool
+	ParentChatID          int64
+	ParentMessageThreadID int
+	ParentCodexThreadID   string
+	SideIndex             int
+	LastSyncedTurnID      string
+	UpdatedAt             string
 }
 
 type StagedAttachment struct {
@@ -121,13 +126,31 @@ CREATE TABLE IF NOT EXISTS telegram_pairing_codes (
   expires_at TEXT NOT NULL,
   created_at TEXT NOT NULL
 );`)
-	return err
+	if err != nil {
+		return err
+	}
+	for _, column := range []struct {
+		name string
+		ddl  string
+	}{
+		{name: "side_chat", ddl: "side_chat INTEGER NOT NULL DEFAULT 0"},
+		{name: "parent_chat_id", ddl: "parent_chat_id INTEGER NOT NULL DEFAULT 0"},
+		{name: "parent_message_thread_id", ddl: "parent_message_thread_id INTEGER NOT NULL DEFAULT 0"},
+		{name: "parent_codex_thread_id", ddl: "parent_codex_thread_id TEXT NOT NULL DEFAULT ''"},
+		{name: "side_index", ddl: "side_index INTEGER NOT NULL DEFAULT 0"},
+	} {
+		if err := s.ensureColumn("conversations", column.name, column.ddl); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Store) Get(chatID int64, messageThreadID int) (Conversation, bool, error) {
 	row := s.db.QueryRow(`
 SELECT chat_id, message_thread_id, codex_thread_id, project_name, cwd, projectless,
-       topic_title, topic_named, last_synced_turn_id, updated_at
+       topic_title, topic_named, side_chat, parent_chat_id, parent_message_thread_id,
+       parent_codex_thread_id, side_index, last_synced_turn_id, updated_at
 FROM conversations
 WHERE chat_id = ? AND message_thread_id = ?`, chatID, messageThreadID)
 	conv, err := scanConversation(row)
@@ -145,8 +168,9 @@ func (s *Store) Upsert(conv Conversation) error {
 	_, err := s.db.Exec(`
 INSERT INTO conversations (
   chat_id, message_thread_id, codex_thread_id, project_name, cwd, projectless,
-  topic_title, topic_named, last_synced_turn_id, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  topic_title, topic_named, side_chat, parent_chat_id, parent_message_thread_id,
+  parent_codex_thread_id, side_index, last_synced_turn_id, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(chat_id, message_thread_id) DO UPDATE SET
   codex_thread_id = excluded.codex_thread_id,
   project_name = excluded.project_name,
@@ -154,6 +178,11 @@ ON CONFLICT(chat_id, message_thread_id) DO UPDATE SET
   projectless = excluded.projectless,
   topic_title = excluded.topic_title,
   topic_named = excluded.topic_named,
+  side_chat = excluded.side_chat,
+  parent_chat_id = excluded.parent_chat_id,
+  parent_message_thread_id = excluded.parent_message_thread_id,
+  parent_codex_thread_id = excluded.parent_codex_thread_id,
+  side_index = excluded.side_index,
   last_synced_turn_id = excluded.last_synced_turn_id,
   updated_at = excluded.updated_at`,
 		conv.ChatID,
@@ -164,10 +193,30 @@ ON CONFLICT(chat_id, message_thread_id) DO UPDATE SET
 		boolInt(conv.Projectless),
 		conv.TopicTitle,
 		boolInt(conv.TopicNamed),
+		boolInt(conv.SideChat),
+		conv.ParentChatID,
+		conv.ParentMessageThreadID,
+		conv.ParentCodexThreadID,
+		conv.SideIndex,
 		conv.LastSyncedTurnID,
 		conv.UpdatedAt,
 	)
 	return err
+}
+
+func (s *Store) NextSideIndex(parentChatID int64, parentMessageThreadID int) (int, error) {
+	row := s.db.QueryRow(`
+SELECT COALESCE(MAX(side_index), 0) + 1
+FROM conversations
+WHERE side_chat != 0 AND parent_chat_id = ? AND parent_message_thread_id = ?`,
+		parentChatID,
+		parentMessageThreadID,
+	)
+	var index int
+	if err := row.Scan(&index); err != nil {
+		return 0, err
+	}
+	return index, nil
 }
 
 func (s *Store) AddStagedAttachment(attachment StagedAttachment) error {
@@ -315,6 +364,7 @@ func scanConversation(row scanner) (Conversation, error) {
 	var conv Conversation
 	var projectless int
 	var topicNamed int
+	var sideChat int
 	if err := row.Scan(
 		&conv.ChatID,
 		&conv.MessageThreadID,
@@ -324,6 +374,11 @@ func scanConversation(row scanner) (Conversation, error) {
 		&projectless,
 		&conv.TopicTitle,
 		&topicNamed,
+		&sideChat,
+		&conv.ParentChatID,
+		&conv.ParentMessageThreadID,
+		&conv.ParentCodexThreadID,
+		&conv.SideIndex,
 		&conv.LastSyncedTurnID,
 		&conv.UpdatedAt,
 	); err != nil {
@@ -331,7 +386,37 @@ func scanConversation(row scanner) (Conversation, error) {
 	}
 	conv.Projectless = projectless != 0
 	conv.TopicNamed = topicNamed != 0
+	conv.SideChat = sideChat != 0
 	return conv, nil
+}
+
+func (s *Store) ensureColumn(table, name, ddl string) error {
+	rows, err := s.db.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+	for rows.Next() {
+		var cid int
+		var columnName string
+		var columnType string
+		var notNull int
+		var defaultValue any
+		var primaryKey int
+		if err := rows.Scan(&cid, &columnName, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return err
+		}
+		if columnName == name {
+			return rows.Err()
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = s.db.Exec("ALTER TABLE " + table + " ADD COLUMN " + ddl)
+	return err
 }
 
 func boolInt(v bool) int {

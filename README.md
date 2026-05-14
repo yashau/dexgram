@@ -188,6 +188,8 @@ Commands are registered only for authorized chats.
 
 - `/new [title]` creates a new topic for a one-off Codex chat.
 - `/new project query: title` creates a new topic pre-bound to a matched project.
+- `/side [message]` forks the current Codex chat into a prefixed side topic.
+  If `message` is present, Dexgram starts it in the new side topic immediately.
 - `/project <project name>` binds a new topic to a Codex Desktop project before
   the first prompt. Ambiguous matches get inline selection buttons.
 - `/status` shows the topic mapping, project/cwd, and active turn state.
@@ -206,6 +208,10 @@ Commands are registered only for authorized chats.
 On the first prompt in a Telegram topic, Dexgram starts a Codex thread and saves
 the mapping by Telegram `chat_id` and `message_thread_id`. Later messages in
 that topic reuse the stored Codex thread.
+
+`/side` creates a new Telegram topic named with a `↳N` prefix and forks the
+current Codex thread at its latest context. Side topics run normal Codex turns,
+can use tools, and diverge from the parent after the fork.
 
 Without `/project`, Dexgram creates a projectless workspace under:
 

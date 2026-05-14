@@ -11,15 +11,20 @@ func TestStoreUpsertGetAndUpdateConversation(t *testing.T) {
 	defer closeTestStore(t, store)
 
 	conv := Conversation{
-		ChatID:           123,
-		MessageThreadID:  7,
-		CodexThreadID:    "thread-a",
-		ProjectName:      "Dexgram",
-		CWD:              `C:\work\dexgram`,
-		Projectless:      true,
-		TopicTitle:       "Build tests",
-		TopicNamed:       true,
-		LastSyncedTurnID: "turn-1",
+		ChatID:                123,
+		MessageThreadID:       7,
+		CodexThreadID:         "thread-a",
+		ProjectName:           "Dexgram",
+		CWD:                   `C:\work\dexgram`,
+		Projectless:           true,
+		TopicTitle:            "Build tests",
+		TopicNamed:            true,
+		SideChat:              true,
+		ParentChatID:          456,
+		ParentMessageThreadID: 8,
+		ParentCodexThreadID:   "thread-parent",
+		SideIndex:             2,
+		LastSyncedTurnID:      "turn-1",
 	}
 	if err := store.Upsert(conv); err != nil {
 		t.Fatal(err)
@@ -44,6 +49,11 @@ func TestStoreUpsertGetAndUpdateConversation(t *testing.T) {
 	updated.CodexThreadID = "thread-b"
 	updated.Projectless = false
 	updated.TopicNamed = false
+	updated.SideChat = false
+	updated.ParentChatID = 0
+	updated.ParentMessageThreadID = 0
+	updated.ParentCodexThreadID = ""
+	updated.SideIndex = 0
 	updated.LastSyncedTurnID = "turn-2"
 	if err := store.Upsert(updated); err != nil {
 		t.Fatal(err)
@@ -57,6 +67,37 @@ func TestStoreUpsertGetAndUpdateConversation(t *testing.T) {
 		t.Fatal("expected updated conversation to be found")
 	}
 	assertConversationFields(t, got, updated)
+}
+
+func TestStoreNextSideIndex(t *testing.T) {
+	store := openTestStore(t)
+	defer closeTestStore(t, store)
+
+	index, err := store.NextSideIndex(123, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if index != 1 {
+		t.Fatalf("empty next side index = %d, want 1", index)
+	}
+
+	for _, conv := range []Conversation{
+		{ChatID: 123, MessageThreadID: 8, SideChat: true, ParentChatID: 123, ParentMessageThreadID: 7, SideIndex: 1},
+		{ChatID: 123, MessageThreadID: 9, SideChat: true, ParentChatID: 123, ParentMessageThreadID: 7, SideIndex: 3},
+		{ChatID: 123, MessageThreadID: 10, SideChat: true, ParentChatID: 123, ParentMessageThreadID: 99, SideIndex: 5},
+		{ChatID: 123, MessageThreadID: 11, SideChat: false, ParentChatID: 123, ParentMessageThreadID: 7, SideIndex: 9},
+	} {
+		if err := store.Upsert(conv); err != nil {
+			t.Fatal(err)
+		}
+	}
+	index, err = store.NextSideIndex(123, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if index != 4 {
+		t.Fatalf("next side index = %d, want 4", index)
+	}
 }
 
 func TestStoreGetMissingConversation(t *testing.T) {
@@ -218,6 +259,11 @@ func assertConversationFields(t *testing.T, got, want Conversation) {
 		got.Projectless != want.Projectless ||
 		got.TopicTitle != want.TopicTitle ||
 		got.TopicNamed != want.TopicNamed ||
+		got.SideChat != want.SideChat ||
+		got.ParentChatID != want.ParentChatID ||
+		got.ParentMessageThreadID != want.ParentMessageThreadID ||
+		got.ParentCodexThreadID != want.ParentCodexThreadID ||
+		got.SideIndex != want.SideIndex ||
 		got.LastSyncedTurnID != want.LastSyncedTurnID {
 		t.Fatalf("conversation mismatch\ngot:  %#v\nwant: %#v", got, want)
 	}

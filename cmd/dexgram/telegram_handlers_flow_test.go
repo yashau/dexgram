@@ -163,6 +163,33 @@ func TestHandleUpdateRoutesPlanUsageAndStatus(t *testing.T) {
 	}
 }
 
+func TestHandleSideCommandRequiresStartedCodexThread(t *testing.T) {
+	b, api := newTelegramTestBot(t)
+	app := newHandlerTestApp(t, []int64{123})
+	if err := app.store.Upsert(state.Conversation{
+		ChatID:          123,
+		MessageThreadID: 7,
+		ProjectName:     "Dexgram",
+		CWD:             `C:\work\dexgram`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	app.handleSideCommand(context.Background(), b, &models.Message{
+		ID:              5,
+		MessageThreadID: 7,
+		Chat:            models.Chat{ID: 123},
+		Text:            "/side check this",
+	}, "check this")
+
+	if api.count("createForumTopic") != 0 {
+		t.Fatalf("createForumTopic count = %d, want 0", api.count("createForumTopic"))
+	}
+	if !api.bodyContains("sendMessage", "Start this Codex chat first") {
+		t.Fatalf("sendMessage body did not include guard text: %#v", api.calls)
+	}
+}
+
 func TestHandlePendingInputReplyBuildsAnswers(t *testing.T) {
 	b, api := newTelegramTestBot(t)
 	app := newHandlerTestApp(t, []int64{123})

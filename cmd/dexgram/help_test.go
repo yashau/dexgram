@@ -22,6 +22,7 @@ func TestPrintHelpIncludesCoreCommandsAndFlagDefaults(t *testing.T) {
 		"dexgram.exe -check",
 		"dexgram.exe telegram chatid add <chat_id_or_pairing_code>",
 		"dexgram.exe service <install|start|stop|restart|status|uninstall>",
+		"/side [message]",
 		"-config string",
 		"Local state:",
 	} {

@@ -9,13 +9,16 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
-func TestTelegramCommandsIncludeUpdate(t *testing.T) {
+func TestTelegramCommandsIncludeUpdateAndSide(t *testing.T) {
+	found := map[string]bool{}
 	for _, command := range telegramCommands() {
-		if command.Command == "update" {
-			return
+		found[command.Command] = true
+	}
+	for _, command := range []string{"update", "side"} {
+		if !found[command] {
+			t.Fatalf("expected /%s command to be registered", command)
 		}
 	}
-	t.Fatal("expected /update command to be registered")
 }
 
 func TestTelegramCommandClearScopesIncludeChatOnlyWhenRegistered(t *testing.T) {
@@ -117,5 +120,11 @@ func TestTelegramTopicTitleHelpers(t *testing.T) {
 	}
 	if got := runeLen("a\u2026b"); got != 3 {
 		t.Fatalf("rune len = %d", got)
+	}
+	if got := sideTopicTitle("Dexgram: auth flow", 2); got != "↳2 Dexgram: auth flow" {
+		t.Fatalf("side topic title = %q", got)
+	}
+	if got := sideTopicTitle("A very long parent title that cannot fit", 12); got != "↳12 A very long parent title th…" {
+		t.Fatalf("long side topic title = %q", got)
 	}
 }

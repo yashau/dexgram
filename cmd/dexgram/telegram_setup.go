@@ -62,6 +62,7 @@ func telegramCommands() []models.BotCommand {
 	return []models.BotCommand{
 		{Command: "project", Description: "Set the Codex project before this chat starts"},
 		{Command: "new", Description: "Create a new Telegram topic for a Codex chat"},
+		{Command: "side", Description: "Fork this Codex chat into a side topic"},
 		{Command: "status", Description: "Show this topic's Dexgram mapping and turn state"},
 		{Command: "sync", Description: "Mirror completed Codex turns into this topic"},
 		{Command: "update", Description: "Update Dexgram and restart the bridge"},
@@ -136,6 +137,24 @@ func topicTitle(projectName, chatName string) string {
 		return truncateTopicPart(projectName, 32)
 	}
 	return balancedTopicTitle(projectName, chatName, 32)
+}
+
+func sideTopicTitle(base string, index int) string {
+	base = compactSpaces(base)
+	if base == "" {
+		base = "Side chat"
+	}
+	var prefix string
+	if index > 0 {
+		prefix = fmt.Sprintf("↳%d ", index)
+	} else {
+		prefix = "↳ "
+	}
+	budget := 32 - runeLen(prefix)
+	if budget <= 0 {
+		return truncateTopicPart(prefix, 32)
+	}
+	return prefix + truncateTopicPart(base, budget)
 }
 
 func balancedTopicTitle(projectName, chatName string, max int) string {

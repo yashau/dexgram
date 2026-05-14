@@ -147,6 +147,87 @@ func (a *app) resumeCodexThread(ctx context.Context, c *codex.Client, threadID s
 	}, &out)
 }
 
+func (a *app) forkTopicThread(ctx context.Context, chatID int64, messageThreadID int, conv state.Conversation) (string, string, error) {
+	if conv.CodexThreadID == "" {
+		return "", "", fmt.Errorf("this Telegram topic has not started a Codex thread yet")
+	}
+	key := fmt.Sprintf("%d:%d", chatID, messageThreadID)
+	if session := a.activeSession(key); session != nil {
+		return a.forkCodexThread(ctx, session.client, session.conv)
+	}
+
+	c, err := codex.StartStdioWithOptions(ctx, codex.StartOptions{
+		CLIPath:    a.cfg.Codex.CLIPath,
+		WorkingDir: appServerWorkingDir(conv),
+	})
+	if err != nil {
+		return "", "", err
+	}
+	done := make(chan struct{})
+	defer close(done)
+	defer func() {
+		_ = c.Close()
+	}()
+	errs := c.Errors()
+	go func() {
+		for {
+			select {
+			case err, ok := <-errs:
+				if !ok {
+					return
+				}
+				log.Printf("codex app-server: %v", err)
+			case <-done:
+				return
+			}
+		}
+	}()
+	c.SetServerRequestHandler(func(_ context.Context, req codex.ServerRequest) (any, error) {
+		return a.requestApproval(ctx, chatID, messageThreadID, req)
+	})
+	if err := a.resumeCodexThread(ctx, c, conv.CodexThreadID); err != nil {
+		return "", "", err
+	}
+	return a.forkCodexThread(ctx, c, conv)
+}
+
+func (a *app) forkCodexThread(ctx context.Context, c *codex.Client, conv state.Conversation) (string, string, error) {
+	params := map[string]any{
+		"threadId":               conv.CodexThreadID,
+		"approvalPolicy":         a.cfg.Codex.ApprovalPolicy,
+		"sandbox":                a.cfg.Codex.Sandbox,
+		"ephemeral":              true,
+		"persistExtendedHistory": false,
+	}
+	cwd := conv.CWD
+	if cwd == "" {
+		cwd = a.cfg.Codex.CWD
+	}
+	if cwd == "" {
+		cwd = "."
+	}
+	abs, err := filepath.Abs(cwd)
+	if err != nil {
+		return "", "", err
+	}
+	params["cwd"] = abs
+	var out codex.ThreadForkResponse
+	if err := c.Call(ctx, "thread/fork", params, &out); err != nil {
+		return "", "", err
+	}
+	threadID := out.Thread.ID
+	if threadID == "" {
+		return "", "", fmt.Errorf("Codex returned an empty forked thread id")
+	}
+	if out.Cwd != "" {
+		return threadID, out.Cwd, nil
+	}
+	if out.Thread.Cwd != "" {
+		return threadID, out.Thread.Cwd, nil
+	}
+	return threadID, abs, nil
+}
+
 func (a *app) syncTopicTitle(ctx context.Context, conv *state.Conversation, c *codex.Client) error {
 	if conv.TopicNamed {
 		return nil

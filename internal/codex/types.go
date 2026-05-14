@@ -25,6 +25,12 @@ type ThreadResumeResponse struct {
 	Cwd    string `json:"cwd"`
 }
 
+type ThreadForkResponse struct {
+	Thread Thread `json:"thread"`
+	Model  string `json:"model"`
+	Cwd    string `json:"cwd"`
+}
+
 type TurnStartResponse struct {
 	Turn Turn `json:"turn"`
 }
