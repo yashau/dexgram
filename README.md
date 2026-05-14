@@ -18,6 +18,7 @@ input requests, and stop buttons. Tiny bridge, surprisingly roomy.
 ## Features
 
 - Creates resumable Codex chats from Telegram topics.
+- Forks active Codex threads into separate Telegram side topics.
 - Keeps Dexgram-created chats visible in Codex Desktop history.
 - Supports project-bound chats with fuzzy Desktop project matching.
 - Creates dated one-off workspaces for projectless chats.
@@ -190,6 +191,7 @@ Commands are registered only for authorized chats.
 - `/new project query: title` creates a new topic pre-bound to a matched project.
 - `/side [message]` forks the current Codex chat into a prefixed side topic.
   If `message` is present, Dexgram starts it in the new side topic immediately.
+  The source topic must already be an active registered Codex thread.
 - `/project <project name>` binds a new topic to a Codex Desktop project before
   the first prompt. Ambiguous matches get inline selection buttons.
 - `/status` shows the topic mapping, project/cwd, and active turn state.
@@ -209,9 +211,30 @@ On the first prompt in a Telegram topic, Dexgram starts a Codex thread and saves
 the mapping by Telegram `chat_id` and `message_thread_id`. Later messages in
 that topic reuse the stored Codex thread.
 
-`/side` creates a new Telegram topic named with a `↳N` prefix and forks the
-current Codex thread at its latest context. Side topics run normal Codex turns,
-can use tools, and diverge from the parent after the fork.
+### Side Chats
+
+Use `/side` inside an existing Codex topic to open a separate side topic from
+the current context. Dexgram names side topics with a `↳N` prefix, such as
+`↳1 Dexgram: auth flow`, while leaving the parent topic name unchanged.
+
+Side chats are real Codex thread forks. They keep the parent topic's project and
+cwd, can call tools, ask for approvals, run commands, edit files, and continue
+independently after the fork. You can create multiple side chats from the same
+parent topic; each one gets the next number.
+
+`/side` is guarded: it only works after the source topic has already started and
+registered a Codex thread. A fresh `/new` topic or project-only topic needs its
+first normal Codex message before it can be forked. If the parent thread is idle,
+Dexgram resumes it first and only creates the Telegram side topic after Codex
+accepts the fork.
+
+You can also include the first side-chat prompt in the command:
+
+```text
+/side check whether the auth refactor missed tests
+```
+
+Dexgram creates the side topic and starts that prompt there immediately.
 
 Without `/project`, Dexgram creates a projectless workspace under:
 
