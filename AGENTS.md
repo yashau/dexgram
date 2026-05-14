@@ -5,8 +5,8 @@ Guidance for agents working on Dexgram.
 ## Project Overview
 
 Dexgram is a Windows-only Telegram bridge for Codex Desktop. It runs as a Go
-binary, listens to a private Telegram bot chat with threaded topics enabled,
-and maps Telegram topics to Codex app-server threads.
+binary, listens through a Telegram bot with threaded topics enabled, and maps
+Telegram topics to Codex app-server threads.
 
 The main command lives in `cmd/dexgram`. Shared packages live under `internal/`:
 
@@ -14,7 +14,8 @@ The main command lives in `cmd/dexgram`. Shared packages live under `internal/`:
 - `internal/codexprojects`: Codex Desktop project discovery.
 - `internal/codexstate`: projectless workspace helpers.
 - `internal/config`: TOML config loading/defaults.
-- `internal/state`: SQLite-backed mapping and sync state.
+- `internal/state`: SQLite-backed mapping, sync, settings, and pairing-code
+  state.
 
 Keep changes small and aligned with the current layout. Prefer local helpers and
 existing package boundaries over adding new framework-like abstractions.
@@ -107,6 +108,23 @@ Dexgram is intentionally Windows-specific:
 - Default paths use `%APPDATA%` and `%LOCALAPPDATA%`.
 - The Codex CLI is auto-discovered at
   `%LOCALAPPDATA%\OpenAI\Codex\bin\codex.exe`.
+- Telegram authorization is based on `[telegram].chat_ids`, an array of
+  explicit `int64` chat IDs. Negative Telegram group IDs are valid. `0` is not
+  an authorization mechanism.
+- Unauthorized Telegram chats must not reach Codex and must not get slash
+  commands. They receive only discovery/setup text with a short-lived pairing
+  code, shown as `XXX-XXX`.
+- Users should not edit TOML by hand for Telegram pairing. Use
+  `dexgram telegram chatid add <chat_id_or_pairing_code>`,
+  `dexgram telegram chatid del <chat_id>`, and
+  `dexgram telegram chatid clear`.
+- Pairing codes are stored in SQLite state, expire quickly, are consumed once,
+  and should be accepted as `XXX-XXX` or `XXXXXX`, case-insensitively.
+- `dexgram telegram token update` prompts for a replacement bot token so the
+  token does not land in shell history.
+- Running Dexgram hot-reloads config from disk. Reload all config values, not
+  only `chat_ids`; if `telegram.bot_token` changes, the Telegram poller should
+  reconnect with the new token.
 
 Avoid replacing this Windows behavior with cross-platform assumptions unless
 the user explicitly asks for that.
@@ -117,6 +135,7 @@ the user explicitly asks for that.
 - Do not commit or depend on generated local binaries like `dexgram.exe`.
 - Keep Telegram command behavior documented in `README.md` when user-facing
   commands change.
+- Keep `AGENTS.md` current when behavior affects future agent assumptions.
 - Use structured parsing for TOML, JSON, and SQLite data instead of ad hoc
   string manipulation.
 - Keep logs and errors useful for a user running Dexgram from PowerShell or as
