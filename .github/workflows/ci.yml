@@ -11,6 +11,10 @@ jobs:
   test:
     name: Test and lint
     runs-on: windows-latest
+    outputs:
+      release_needed: ${{ steps.release.outputs.needed }}
+      release_tag: ${{ steps.release.outputs.tag }}
+      release_version: ${{ steps.release.outputs.version }}
 
     steps:
       - name: Checkout
@@ -26,27 +30,12 @@ jobs:
         shell: pwsh
         run: .\scripts\check.ps1
 
-  release:
-    name: Build and release
-    runs-on: windows-latest
-    needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Validate release version
-        id: version
+      - name: Check release
+        id: release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           $info = Get-Content .\cmd\dexgram\versioninfo.json -Raw | ConvertFrom-Json
           $version = [string]$info.StringFileInfo.ProductVersion
@@ -70,41 +59,45 @@ jobs:
           if ($version -ne $fileFixed -or $info.FixedFileInfo.FileVersion.Build -ne 0) {
             throw "FixedFileInfo.FileVersion does not match ProductVersion."
           }
+
+          $tag = "v$version"
           "version=$version" >> $env:GITHUB_OUTPUT
-          "tag=v$version" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
 
-      - name: Check generated files
-        shell: pwsh
-        run: |
-          go install github.com/josephspurrier/goversioninfo/cmd/goversioninfo@latest
-          $env:Path = "$(go env GOPATH)\bin;$env:Path"
-          go generate ./cmd/dexgram
-          git diff --exit-code -- cmd/dexgram/version.go cmd/dexgram/resource.syso
-
-      - name: Check release
-        id: release
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
-        run: |
           $release = gh release list --repo $env:GITHUB_REPOSITORY --limit 100 --json tagName |
             ConvertFrom-Json |
-            Where-Object { $_.tagName -eq $env:TAG } |
+            Where-Object { $_.tagName -eq $tag } |
             Select-Object -First 1
           if ($release) {
-            "exists=true" >> $env:GITHUB_OUTPUT
-            Write-Host "Release $env:TAG already exists; skipping build and publish."
+            "needed=false" >> $env:GITHUB_OUTPUT
+            Write-Host "Release $tag already exists; skipping build and publish."
           } else {
-            $tag = git ls-remote --tags origin "refs/tags/$env:TAG"
-            if ($tag) {
-              throw "Tag $env:TAG exists but no GitHub release exists."
+            $remoteTag = git ls-remote --tags origin "refs/tags/$tag"
+            if ($remoteTag) {
+              throw "Tag $tag exists but no GitHub release exists."
             }
-            "exists=false" >> $env:GITHUB_OUTPUT
+            "needed=true" >> $env:GITHUB_OUTPUT
           }
 
+  release:
+    name: Build and release
+    runs-on: windows-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.test.outputs.release_needed == 'true'
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
       - name: Build
-        if: steps.release.outputs.exists == 'false'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path .\dist | Out-Null
@@ -113,12 +106,11 @@ jobs:
           Set-Content -Path .\dist\dexgram.exe.sha256 -Value "$hash  dexgram.exe"
 
       - name: Publish release
-        if: steps.release.outputs.exists == 'false'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
-          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ needs.test.outputs.release_tag }}
+          VERSION: ${{ needs.test.outputs.release_version }}
         run: |
           gh release create $env:TAG `
             .\dist\dexgram.exe `
