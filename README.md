@@ -125,6 +125,11 @@ If you already have `dexgram.exe`, run onboarding yourself:
 .\dexgram.exe onboard
 ```
 
+Onboarding asks for the BotFather token. If no Telegram chats are authorized
+yet, start Dexgram after onboarding, then DM the bot or add it to a group and
+send a message. The bot replies in Telegram with the exact
+`dexgram telegram chatid add ...` command to copy into PowerShell.
+
 You can also keep a local config beside the binary:
 
 ```powershell
@@ -142,22 +147,24 @@ chat_ids = []
 
 Start Dexgram and send the bot a DM from any chat that is not in `chat_ids`.
 Dexgram will not send unauthorized chats to Codex; it will reply with the exact
-command to run, for example:
+command to run using a short-lived pairing code, for example:
 
 ```powershell
-.\dexgram.exe telegram chatid add <logged_chat_id>
+.\dexgram.exe telegram chatid add ABC-234
 ```
 
 The shorter alias works too:
 
 ```powershell
-.\dexgram.exe tg id add <logged_chat_id>
+.\dexgram.exe tg id add ABC-234
 ```
 
 For unauthorized chats, Codex prompts and slash commands stay disabled. If
 `chat_ids` is empty, every chat is unauthorized and receives only setup
 instructions. Once a chat is configured, commands are registered only for
-configured chats. Negative Telegram chat IDs are accepted.
+configured chats. `telegram chatid add` also accepts direct numeric chat IDs,
+including negative Telegram group IDs. The running bot reloads config changes
+from disk, so adding a chat does not require a restart.
 
 To remove one registered chat or clear all registered chats later:
 

@@ -6,8 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"dexgram/internal/config"
+	"dexgram/internal/state"
 )
 
 func TestTelegramChatIDCommandUpdatesConfig(t *testing.T) {
@@ -60,7 +62,7 @@ approval_policy = "on-request"
 func TestTelegramChatIDCommandRejectsInvalidID(t *testing.T) {
 	var out bytes.Buffer
 	if err := runTelegramChatIDCommand([]string{"add", "not-a-number"}, &out); err == nil {
-		t.Fatal("expected invalid chat id error")
+		t.Fatal("expected invalid chat id or pairing code error")
 	}
 }
 
@@ -148,12 +150,12 @@ chat_ids = [123, -100456]
 }
 
 func TestParseTelegramChatIDActionDeleteAlias(t *testing.T) {
-	action, chatID, err := parseTelegramChatIDAction([]string{"del", "-100456"})
+	action, value, err := parseTelegramChatIDAction([]string{"del", "-100456"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if action != telegramChatIDDelete || chatID != -100456 {
-		t.Fatalf("parse del = (%q, %d), want (%q, -100456)", action, chatID, telegramChatIDDelete)
+	if action != telegramChatIDDelete || value != "-100456" {
+		t.Fatalf("parse del = (%q, %q), want (%q, -100456)", action, value, telegramChatIDDelete)
 	}
 }
 
@@ -163,5 +165,78 @@ func TestTelegramChatIDCommandRequiresExistingConfig(t *testing.T) {
 	var out bytes.Buffer
 	if err := runTelegramChatIDCommand([]string{"-config", path, "add", "123"}, &out); err == nil {
 		t.Fatal("expected missing config error")
+	}
+}
+
+func TestTelegramChatIDCommandAddsCaseInsensitivePairingCode(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "dexgram.toml")
+	if err := os.WriteFile(configPath, []byte(`
+[telegram]
+bot_token = "token"
+chat_ids = []
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	dbPath := filepath.Join(t.TempDir(), "dexgram.db")
+	store, err := state.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveTelegramPairingCode("ABC234", -100123, time.Now().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	oldOpen := openTelegramPairingStore
+	openTelegramPairingStore = func(string) (*state.Store, error) {
+		return state.Open(dbPath)
+	}
+	t.Cleanup(func() {
+		openTelegramPairingStore = oldOpen
+	})
+
+	var out bytes.Buffer
+	if err := runTelegramChatIDCommand([]string{"-config", configPath, "add", "abc-234"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Telegram.ChatIDs) != 1 || cfg.Telegram.ChatIDs[0] != -100123 {
+		t.Fatalf("chat ids = %#v, want [-100123]", cfg.Telegram.ChatIDs)
+	}
+
+	store, err = state.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeTestStateStore(t, store)
+	if _, ok, err := store.ConsumeTelegramPairingCode("ABC234"); err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Fatal("expected pairing code to be consumed")
+	}
+}
+
+func TestNormalizeTelegramPairingCodeAcceptsDashedAndPlainLowercase(t *testing.T) {
+	for _, value := range []string{"abc-234", "ABC234"} {
+		got, err := normalizeTelegramPairingCode(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != "ABC234" {
+			t.Fatalf("normalizeTelegramPairingCode(%q) = %q, want ABC234", value, got)
+		}
+	}
+}
+
+func closeTestStateStore(t *testing.T, store *state.Store) {
+	t.Helper()
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -94,7 +94,9 @@ func runOnboard(in io.Reader, out io.Writer, path string) error {
 	_, _ = fmt.Fprintln(out)
 	_, _ = fmt.Fprintf(out, "Wrote %s\n", path)
 	if len(cfg.Telegram.ChatIDs) == 0 {
-		_, _ = fmt.Fprintln(out, "telegram.chat_ids is still empty. Run Dexgram once and DM the bot; Dexgram will reply with the command to add that chat.")
+		_, _ = fmt.Fprintln(out, "No Telegram chats are authorized yet.")
+		_, _ = fmt.Fprintln(out, "Start Dexgram, then DM the bot or add it to a group and send a message.")
+		_, _ = fmt.Fprintln(out, "The bot will reply in Telegram with a dexgram telegram chatid add command to copy into this terminal.")
 	}
 	_, _ = fmt.Fprintf(out, "Next: %s -check\n", filepath.Base(os.Args[0]))
 	return nil

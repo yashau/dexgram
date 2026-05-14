@@ -113,6 +113,13 @@ CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
   updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS telegram_pairing_codes (
+  code TEXT PRIMARY KEY,
+  chat_id INTEGER NOT NULL,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL
 );`)
 	return err
 }
@@ -243,6 +250,61 @@ ON CONFLICT(key) DO UPDATE SET
 		time.Now().UTC().Format(time.RFC3339),
 	)
 	return err
+}
+
+func (s *Store) SaveTelegramPairingCode(code string, chatID int64, expiresAt time.Time) error {
+	_, err := s.db.Exec(`
+INSERT INTO telegram_pairing_codes (code, chat_id, expires_at, created_at)
+VALUES (?, ?, ?, ?)
+ON CONFLICT(code) DO UPDATE SET
+  chat_id = excluded.chat_id,
+  expires_at = excluded.expires_at,
+  created_at = excluded.created_at`,
+		code,
+		chatID,
+		expiresAt.UTC().Format(time.RFC3339),
+		time.Now().UTC().Format(time.RFC3339),
+	)
+	return err
+}
+
+func (s *Store) ConsumeTelegramPairingCode(code string) (int64, bool, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, false, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := tx.Exec(`DELETE FROM telegram_pairing_codes WHERE expires_at <= ?`, now); err != nil {
+		return 0, false, err
+	}
+
+	row := tx.QueryRow(`SELECT chat_id FROM telegram_pairing_codes WHERE code = ?`, code)
+	var chatID int64
+	if err := row.Scan(&chatID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			if err := tx.Commit(); err != nil {
+				return 0, false, err
+			}
+			committed = true
+			return 0, false, nil
+		}
+		return 0, false, err
+	}
+	if _, err := tx.Exec(`DELETE FROM telegram_pairing_codes WHERE code = ?`, code); err != nil {
+		return 0, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, false, err
+	}
+	committed = true
+	return chatID, true, nil
 }
 
 type scanner interface {

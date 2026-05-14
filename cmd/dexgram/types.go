@@ -19,6 +19,7 @@ type app struct {
 	bot                   *bot.Bot
 	store                 *state.Store
 	configPath            string
+	configState           configFileState
 	logPath               string
 	mu                    sync.Mutex
 	projectsMu            sync.RWMutex

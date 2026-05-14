@@ -27,7 +27,7 @@ Usage
   %[1]s -config .\dexgram.toml
   %[1]s version
   %[1]s onboard
-  %[1]s telegram chatid add <chat_id>
+  %[1]s telegram chatid add <chat_id_or_pairing_code>
   %[1]s update
   %[1]s service <install|start|stop|restart|status|uninstall>
 
@@ -41,8 +41,8 @@ Setup
   1. Run %[1]s onboard to create %%APPDATA%%\Dexgram\dexgram.toml.
   2. Or copy dexgram.example.toml beside the binary, then run onboard.
   3. Put your Telegram bot token in [telegram].bot_token.
-  4. Add one or more Telegram chat ids:
-       %[1]s telegram chatid add <chat_id>
+  4. Add one or more Telegram chats:
+       %[1]s telegram chatid add <chat_id_or_pairing_code>
      When a chat is not in chat_ids, Dexgram replies with a ready-to-run add
      command. Codex prompts and slash commands stay disabled for unauthorized
      chats.
@@ -72,16 +72,19 @@ Version
 
 Telegram Config
 
-  %[1]s telegram chatid add <chat_id>
+  %[1]s telegram chatid add <chat_id_or_pairing_code>
   %[1]s telegram chatid del <chat_id>
   %[1]s telegram chatid clear
-  %[1]s tg id add <chat_id>
+  %[1]s tg id add <chat_id_or_pairing_code>
       Update [telegram].chat_ids in the Dexgram TOML config without opening the
-      file by hand. add accepts positive private chat ids and negative group ids.
-      del removes one id. clear removes all ids, so every incoming chat is
-      unauthorized and receives only setup instructions. Add -config before
-      the action to target a non-default config.
+      file by hand. add accepts the short-lived pairing code the bot sends,
+      positive private chat ids, and negative group ids. Pairing codes are
+      case-insensitive and may be entered as XXX-XXX or XXXXXX. del removes one
+      id. clear removes all ids, so every incoming chat is unauthorized and
+      receives only setup instructions. Add -config before the action to target
+      a non-default config.
       Telegram slash commands are registered only for configured chats.
+      The running bot reloads config changes from disk.
 
 Config
 

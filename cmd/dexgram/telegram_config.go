@@ -10,7 +10,10 @@ import (
 	"strings"
 
 	"dexgram/internal/config"
+	"dexgram/internal/state"
 )
+
+var openTelegramPairingStore = state.Open
 
 func runTelegramCommand(args []string) error {
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
@@ -31,10 +34,10 @@ func printTelegramHelp(w io.Writer, exe string) {
 
 Usage
 
-  %[1]s telegram chatid add <chat_id>
+  %[1]s telegram chatid add <chat_id_or_pairing_code>
   %[1]s telegram chatid del <chat_id>
   %[1]s telegram chatid clear
-  %[1]s tg id add <chat_id>
+  %[1]s tg id add <chat_id_or_pairing_code>
 
 Options
 
@@ -46,6 +49,8 @@ Examples
 
   %[1]s telegram chatid add 123456789
   %[1]s telegram chatid add -1001234567890
+  %[1]s telegram chatid add ABC-234
+  %[1]s telegram chatid add abc234
   %[1]s telegram chatid del 123456789
   %[1]s telegram chatid clear
 
@@ -60,7 +65,11 @@ func runTelegramChatIDCommand(args []string, out io.Writer) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	action, chatID, err := parseTelegramChatIDAction(fs.Args())
+	action, value, err := parseTelegramChatIDAction(fs.Args())
+	if err != nil {
+		return err
+	}
+	chatID, err := resolveTelegramChatIDAction(action, value)
 	if err != nil {
 		return err
 	}
@@ -103,32 +112,85 @@ const (
 	telegramChatIDClear  telegramChatIDAction = "clear"
 )
 
-func parseTelegramChatIDAction(args []string) (telegramChatIDAction, int64, error) {
+func parseTelegramChatIDAction(args []string) (telegramChatIDAction, string, error) {
 	if len(args) == 0 {
-		return "", 0, fmt.Errorf("usage: %s telegram chatid <add|del|clear> [chat_id]", filepath.Base(os.Args[0]))
+		return "", "", fmt.Errorf("usage: %s telegram chatid <add|del|clear> [chat_id]", filepath.Base(os.Args[0]))
 	}
 	action := strings.ToLower(strings.TrimSpace(args[0]))
 	switch action {
 	case "add":
 		if len(args) != 2 {
-			return "", 0, fmt.Errorf("missing chat id; retry as: %s telegram chatid add <chat_id>", filepath.Base(os.Args[0]))
+			return "", "", fmt.Errorf("missing chat id; retry as: %s telegram chatid add <chat_id_or_pairing_code>", filepath.Base(os.Args[0]))
 		}
-		chatID, err := parseTelegramChatID(args[1])
-		return telegramChatIDAdd, chatID, err
+		return telegramChatIDAdd, strings.TrimSpace(args[1]), nil
 	case "del", "delete", "rm", "remove":
 		if len(args) != 2 {
-			return "", 0, fmt.Errorf("missing chat id; retry as: %s telegram chatid del <chat_id>", filepath.Base(os.Args[0]))
+			return "", "", fmt.Errorf("missing chat id; retry as: %s telegram chatid del <chat_id>", filepath.Base(os.Args[0]))
 		}
-		chatID, err := parseTelegramChatID(args[1])
-		return telegramChatIDDelete, chatID, err
+		return telegramChatIDDelete, strings.TrimSpace(args[1]), nil
 	case "clear":
 		if len(args) != 1 {
-			return "", 0, fmt.Errorf("usage: %s telegram chatid clear", filepath.Base(os.Args[0]))
+			return "", "", fmt.Errorf("usage: %s telegram chatid clear", filepath.Base(os.Args[0]))
 		}
-		return telegramChatIDClear, 0, nil
+		return telegramChatIDClear, "", nil
 	default:
-		return "", 0, fmt.Errorf("unknown chatid action %q; use add, del, or clear", args[0])
+		return "", "", fmt.Errorf("unknown chatid action %q; use add, del, or clear", args[0])
 	}
+}
+
+func resolveTelegramChatIDAction(action telegramChatIDAction, value string) (int64, error) {
+	switch action {
+	case telegramChatIDAdd:
+		if chatID, err := parseTelegramChatID(value); err == nil {
+			return chatID, nil
+		} else if strings.TrimSpace(value) == "*" || isSignedInteger(value) {
+			return 0, err
+		}
+		code, err := normalizeTelegramPairingCode(value)
+		if err != nil {
+			return 0, err
+		}
+		store, err := openTelegramPairingStore("")
+		if err != nil {
+			return 0, fmt.Errorf("open Dexgram state to resolve Telegram pairing code: %w", err)
+		}
+		defer func() {
+			_ = store.Close()
+		}()
+		chatID, ok, err := store.ConsumeTelegramPairingCode(code)
+		if err != nil {
+			return 0, fmt.Errorf("resolve Telegram pairing code: %w", err)
+		}
+		if !ok {
+			return 0, fmt.Errorf("Telegram pairing code %s was not found or has expired; send another message to the bot and retry", formatTelegramPairingCode(code))
+		}
+		return chatID, nil
+	case telegramChatIDDelete:
+		return parseTelegramChatID(value)
+	case telegramChatIDClear:
+		return 0, nil
+	default:
+		return 0, fmt.Errorf("unknown chatid action %q", action)
+	}
+}
+
+func isSignedInteger(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	if value[0] == '-' || value[0] == '+' {
+		value = value[1:]
+	}
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func parseTelegramChatID(value string) (int64, error) {

@@ -157,6 +157,41 @@ func TestStoreSettingsRoundTripAndMissing(t *testing.T) {
 	}
 }
 
+func TestStoreTelegramPairingCodeConsumesOnce(t *testing.T) {
+	store := openTestStore(t)
+	defer closeTestStore(t, store)
+
+	if err := store.SaveTelegramPairingCode("ABC234", -100123, time.Now().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	chatID, ok, err := store.ConsumeTelegramPairingCode("ABC234")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || chatID != -100123 {
+		t.Fatalf("pairing code = %d, %v; want -100123, true", chatID, ok)
+	}
+	if _, ok, err := store.ConsumeTelegramPairingCode("ABC234"); err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Fatal("expected consumed pairing code to be missing")
+	}
+}
+
+func TestStoreTelegramPairingCodeExpires(t *testing.T) {
+	store := openTestStore(t)
+	defer closeTestStore(t, store)
+
+	if err := store.SaveTelegramPairingCode("ABC234", 123, time.Now().Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := store.ConsumeTelegramPairingCode("ABC234"); err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Fatal("expected expired pairing code to be missing")
+	}
+}
+
 func openTestStore(t *testing.T) *Store {
 	t.Helper()
 	store, err := Open(filepath.Join(t.TempDir(), "dexgram.db"))

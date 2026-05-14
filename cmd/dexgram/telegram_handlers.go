@@ -26,6 +26,7 @@ func (a *app) handleUpdateFatal(ctx context.Context, b *bot.Bot, update *models.
 }
 
 func (a *app) handleUpdate(ctx context.Context, b *bot.Bot, update *models.Update) {
+	a.reloadConfigIfChanged(ctx, b)
 	if update.CallbackQuery != nil {
 		a.handleCallback(ctx, b, update.CallbackQuery)
 		return
@@ -155,7 +156,12 @@ func (a *app) allowedChat(chatID int64) bool {
 }
 
 func (a *app) replyUnregisteredChat(ctx context.Context, b *bot.Bot, msg *models.Message) {
-	text := unregisteredChatMessage(msg.Chat.ID, a.configPath)
+	code, err := createTelegramPairingCode(a.store, msg.Chat.ID)
+	if err != nil {
+		log.Printf("create Telegram pairing code chat_id=%d: %v", msg.Chat.ID, err)
+		code = ""
+	}
+	text := unregisteredChatMessage(code, a.configPath)
 	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:              msg.Chat.ID,
 		MessageThreadID:     msg.MessageThreadID,
@@ -171,23 +177,28 @@ func (a *app) replyUnregisteredChat(ctx context.Context, b *bot.Bot, msg *models
 	}
 }
 
-func unregisteredChatMessage(chatID int64, configPath string) string {
+func unregisteredChatMessage(pairingCode string, configPath string) string {
+	if strings.TrimSpace(pairingCode) == "" {
+		return "Dexgram does not have this Telegram chat registered yet.\n\n" +
+			"Dexgram could not create a pairing code. Check the Dexgram logs, then send another message here to retry."
+	}
+	displayCode := formatTelegramPairingCode(pairingCode)
 	return fmt.Sprintf(
 		"Dexgram does not have this Telegram chat registered yet.\n\n"+
-			"chat_id:\n%d\n\n"+
+			"Pairing code:\n%s\n\n"+
 			"Run this in PowerShell on the Windows machine running Dexgram:\n\n"+
 			"%s\n\n"+
-			"Then restart Dexgram.",
-		chatID,
-		telegramChatIDCommand(chatID, configPath),
+			"Then send another message here. This code expires in 10 minutes.",
+		displayCode,
+		telegramChatIDCommand(displayCode, configPath),
 	)
 }
 
-func telegramChatIDCommand(chatID int64, configPath string) string {
+func telegramChatIDCommand(value string, configPath string) string {
 	if strings.TrimSpace(configPath) == "" || configPath == defaultConfigPath() {
-		return fmt.Sprintf("dexgram telegram chatid add %d", chatID)
+		return fmt.Sprintf("dexgram telegram chatid add %s", value)
 	}
-	return fmt.Sprintf("dexgram telegram chatid -config %s add %d", quotePowerShellArg(configPath), chatID)
+	return fmt.Sprintf("dexgram telegram chatid -config %s add %s", quotePowerShellArg(configPath), value)
 }
 
 func quotePowerShellArg(value string) string {

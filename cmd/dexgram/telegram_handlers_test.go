@@ -40,12 +40,15 @@ func TestAllowedChat(t *testing.T) {
 }
 
 func TestUnregisteredChatMessageIncludesReadyCommand(t *testing.T) {
-	got := unregisteredChatMessage(123456789, "")
-	if !strings.Contains(got, "chat_id:\n123456789") {
-		t.Fatalf("message did not include chat id: %q", got)
+	got := unregisteredChatMessage("ABC234", "")
+	if !strings.Contains(got, "Pairing code:\nABC-234") {
+		t.Fatalf("message did not include pairing code: %q", got)
 	}
-	if !strings.Contains(got, "dexgram telegram chatid add 123456789") {
+	if !strings.Contains(got, "dexgram telegram chatid add ABC-234") {
 		t.Fatalf("message did not include ready command: %q", got)
+	}
+	if strings.Contains(got, "chat_id") {
+		t.Fatalf("unregistered chat message should not expose chat id: %q", got)
 	}
 	if strings.Contains(got, "Codex") {
 		t.Fatalf("unregistered chat message should not route user toward Codex: %q", got)
@@ -53,8 +56,8 @@ func TestUnregisteredChatMessageIncludesReadyCommand(t *testing.T) {
 }
 
 func TestTelegramChatIDCommandIncludesConfigWhenCustom(t *testing.T) {
-	got := telegramChatIDCommand(123, `C:\Dexgram\dexgram.toml`)
-	want := `dexgram telegram chatid -config 'C:\Dexgram\dexgram.toml' add 123`
+	got := telegramChatIDCommand("ABC-234", `C:\Dexgram\dexgram.toml`)
+	want := `dexgram telegram chatid -config 'C:\Dexgram\dexgram.toml' add ABC-234`
 	if got != want {
 		t.Fatalf("telegramChatIDCommand() = %q, want %q", got, want)
 	}

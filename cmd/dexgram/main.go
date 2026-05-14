@@ -100,6 +100,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	configState, err := statConfigFile(configPath)
+	if err != nil {
+		return err
+	}
 	store, err := state.Open("")
 	if err != nil {
 		return err
@@ -118,6 +122,7 @@ func run() error {
 		cfg:                   cfg,
 		store:                 store,
 		configPath:            configPath,
+		configState:           configState,
 		logPath:               logPath,
 		active:                map[string]*activeTurn{},
 		approvals:             map[string]*pendingApproval{},
