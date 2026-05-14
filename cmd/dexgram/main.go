@@ -145,7 +145,7 @@ func run() error {
 		return err
 	}
 
-	if err := reconcileCommands(ctx, tg, cfg.Telegram.ChatID); err != nil {
+	if err := reconcileCommands(ctx, tg); err != nil {
 		return err
 	}
 	log.Printf("telegram slash commands cleared and registered")

@@ -13,13 +13,10 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
-func reconcileCommands(ctx context.Context, b *bot.Bot, chatID int64) error {
+func reconcileCommands(ctx context.Context, b *bot.Bot) error {
 	scopes := []models.BotCommandScope{
 		&models.BotCommandScopeDefault{},
 		&models.BotCommandScopeAllPrivateChats{},
-	}
-	if chatID != 0 {
-		scopes = append(scopes, &models.BotCommandScopeChat{ChatID: chatID})
 	}
 
 	var errs []error
@@ -39,13 +36,11 @@ func reconcileCommands(ctx context.Context, b *bot.Bot, chatID int64) error {
 	}); err != nil {
 		return fmt.Errorf("register default commands: %w", err)
 	}
-	if chatID != 0 {
-		if _, err := b.SetMyCommands(ctx, &bot.SetMyCommandsParams{
-			Commands: commands,
-			Scope:    &models.BotCommandScopeChat{ChatID: chatID},
-		}); err != nil {
-			return fmt.Errorf("register chat commands: %w", err)
-		}
+	if _, err := b.SetMyCommands(ctx, &bot.SetMyCommandsParams{
+		Commands: commands,
+		Scope:    &models.BotCommandScopeAllPrivateChats{},
+	}); err != nil {
+		return fmt.Errorf("register private chat commands: %w", err)
 	}
 	return nil
 }
