@@ -17,7 +17,7 @@ import (
 const (
 	defaultSyncTurnLimit = 1
 	maxSyncTurnLimit     = 5
-	attachSyncMessages   = 100
+	attachSyncMessages   = 25
 	maxSyncRunLogLines   = 50
 	maxSyncTextRunes     = 6000
 )

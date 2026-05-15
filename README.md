@@ -213,7 +213,7 @@ Commands are registered only for authorized chats.
 
 - `/sessions [query]` opens the session browser. Dexgram lists projects first,
   then paginated Codex threads inside the selected project. Attach one to the
-  current Telegram topic and Dexgram syncs the most recent 100 rendered history
+  current Telegram topic and Dexgram syncs the most recent 25 rendered history
   messages by default.
 - `/new [title]` creates a new topic for a one-off Codex chat.
 - `/new project query: title` creates a new topic already bound to a matched
@@ -261,7 +261,7 @@ asks Codex for recent threads, groups them by project/cwd, and shows an inline
 project tree. Pick a project, pick a thread, and the current Telegram topic is
 attached to that Codex session.
 
-Attach sync is intentionally bounded. Dexgram mirrors up to the most recent 100
+Attach sync is intentionally bounded. Dexgram mirrors up to the most recent 25
 rendered Telegram history messages so you get context without flooding the
 topic. Manual `/sync [limit]` is also bounded: one completed turn by default,
 five at most.
@@ -341,7 +341,7 @@ Images are sent as photos. Everything else is sent as a document.
 
 - Dexgram can attach existing Codex sessions exposed by Codex app-server, but it
   does not bulk-import your entire Codex history into Telegram.
-- Attach sync is capped at the most recent 100 rendered Telegram messages.
+- Attach sync is capped at the most recent 25 rendered Telegram messages.
 - Manual `/sync` is intentionally capped and truncated so one command cannot
   flood a topic with a huge historical transcript.
 - Dexgram is Windows-only by design.

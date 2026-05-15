@@ -112,7 +112,7 @@ Telegram Commands
 
   /sessions [query]
       Browse existing Codex sessions by project and attach one to this topic.
-      Attaching syncs the most recent 100 rendered history messages.
+      Attaching syncs the most recent 25 rendered history messages.
 
   /new [title]
       Create a new Telegram topic for a one-off Codex chat.
