@@ -69,3 +69,31 @@ func TestSummarizeTurnFallsBackToLastAgentMessage(t *testing.T) {
 		t.Fatalf("final fallback = %q", final)
 	}
 }
+
+func TestParseSyncLimitDefaultsAndCaps(t *testing.T) {
+	if got, err := parseSyncLimit(""); err != nil || got != defaultSyncTurnLimit {
+		t.Fatalf("default sync limit = %d, %v", got, err)
+	}
+	if got, err := parseSyncLimit("100"); err != nil || got != maxSyncTurnLimit {
+		t.Fatalf("capped sync limit = %d, %v", got, err)
+	}
+	if _, err := parseSyncLimit("nope"); err == nil {
+		t.Fatal("expected invalid sync limit error")
+	}
+}
+
+func TestRecentCompletedTurnsByMessageBudgetKeepsNewestWithinBudget(t *testing.T) {
+	phase := "final_answer"
+	turns := []codex.Turn{
+		{ID: "old", Status: "completed", Items: []codex.ThreadItem{{Type: "agentMessage", Phase: &phase, Text: "old"}}},
+		{ID: "running", Status: "running", Items: []codex.ThreadItem{{Type: "agentMessage", Text: "skip"}}},
+		{ID: "newer", Status: "completed", Items: []codex.ThreadItem{{Type: "plan", Text: "plan"}, {Type: "agentMessage", Phase: &phase, Text: "done"}}},
+		{ID: "newest", Status: "completed", Items: []codex.ThreadItem{{Type: "agentMessage", Phase: &phase, Text: "latest"}}},
+	}
+
+	got := recentCompletedTurnsByMessageBudget(turns, 3)
+	want := []codex.Turn{turns[2], turns[3]}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("recentCompletedTurnsByMessageBudget = %#v, want %#v", got, want)
+	}
+}

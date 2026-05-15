@@ -163,6 +163,25 @@ func TestHandleUpdateRoutesPlanUsageAndStatus(t *testing.T) {
 	}
 }
 
+func TestFreshUnboundTopicAsksHowToUseFirstMessage(t *testing.T) {
+	b, api := newTelegramTestBot(t)
+	app := newHandlerTestApp(t, []int64{123})
+
+	app.handlePrompt(context.Background(), b, &models.Message{
+		ID:              10,
+		MessageThreadID: 7,
+		Chat:            models.Chat{ID: 123},
+		Text:            "please start here",
+	}, "please start here")
+
+	if !api.bodyContains("sendMessage", "How should Dexgram use this message?") {
+		t.Fatalf("fresh topic choice was not sent: %#v", api.calls)
+	}
+	if !api.bodyContains("sendMessage", "Resume session") || !api.bodyContains("sendMessage", "Start new chat") {
+		t.Fatalf("fresh topic buttons missing: %#v", api.calls)
+	}
+}
+
 func TestHandleSideCommandRequiresStartedCodexThread(t *testing.T) {
 	b, api := newTelegramTestBot(t)
 	app := newHandlerTestApp(t, []int64{123})

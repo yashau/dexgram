@@ -116,6 +116,12 @@ func reconcileChangedCommands(ctx context.Context, b *bot.Bot, oldChatIDs, newCh
 		}); err != nil {
 			return fmt.Errorf("register chat commands for %d: %w", chatID, err)
 		}
+		if _, err := b.SetChatMenuButton(ctx, &bot.SetChatMenuButtonParams{
+			ChatID:     chatID,
+			MenuButton: &models.MenuButtonCommands{},
+		}); err != nil {
+			log.Printf("set Telegram menu button for chat_id=%d: %v", chatID, err)
+		}
 	}
 	log.Printf("telegram slash commands reloaded for chat_ids=%v", newChatIDs)
 	return nil

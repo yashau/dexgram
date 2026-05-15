@@ -6,7 +6,11 @@ import (
 )
 
 type ThreadListResponse struct {
-	Data []Thread `json:"data"`
+	Data          []Thread        `json:"data"`
+	Items         []Thread        `json:"items"`
+	Threads       []Thread        `json:"threads"`
+	NextCursor    json.RawMessage `json:"nextCursor"`
+	NextCursorAlt json.RawMessage `json:"next_cursor"`
 }
 
 type ThreadReadResponse struct {

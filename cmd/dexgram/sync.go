@@ -4,15 +4,34 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 
 	"dexgram/internal/codex"
+	"dexgram/internal/state"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
 
-func (a *app) handleSyncCommand(ctx context.Context, b *bot.Bot, msg *models.Message) {
+const (
+	defaultSyncTurnLimit = 1
+	maxSyncTurnLimit     = 5
+	attachSyncMessages   = 100
+	maxSyncRunLogLines   = 50
+	maxSyncTextRunes     = 6000
+)
+
+func (a *app) handleSyncCommand(ctx context.Context, b *bot.Bot, msg *models.Message, arg string) {
+	limit, err := parseSyncLimit(arg)
+	if err != nil {
+		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:          msg.Chat.ID,
+			MessageThreadID: msg.MessageThreadID,
+			Text:            err.Error(),
+		})
+		return
+	}
 	conv, ok, err := a.store.Get(msg.Chat.ID, msg.MessageThreadID)
 	if err != nil {
 		log.Printf("read conversation for sync: %v", err)
@@ -63,8 +82,8 @@ func (a *app) handleSyncCommand(ctx context.Context, b *bot.Bot, msg *models.Mes
 		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{ChatID: msg.Chat.ID, MessageThreadID: msg.MessageThreadID, Text: "Already synced."})
 		return
 	}
-	if len(turns) > 5 {
-		turns = turns[len(turns)-5:]
+	if len(turns) > limit {
+		turns = turns[len(turns)-limit:]
 	}
 	for _, turn := range turns {
 		renderHistoricalTurn(ctx, b, msg.Chat.ID, msg.MessageThreadID, turn)
@@ -73,6 +92,21 @@ func (a *app) handleSyncCommand(ctx context.Context, b *bot.Bot, msg *models.Mes
 	if err := a.store.Upsert(conv); err != nil {
 		log.Printf("store sync marker: %v", err)
 	}
+}
+
+func parseSyncLimit(arg string) (int, error) {
+	arg = strings.TrimSpace(arg)
+	if arg == "" {
+		return defaultSyncTurnLimit, nil
+	}
+	n, err := strconv.Atoi(arg)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("Usage: /sync [1-%d]", maxSyncTurnLimit)
+	}
+	if n > maxSyncTurnLimit {
+		return maxSyncTurnLimit, nil
+	}
+	return n, nil
 }
 
 func unsyncedTurns(turns []codex.Turn, lastID string) []codex.Turn {
@@ -99,6 +133,9 @@ func unsyncedTurns(turns []codex.Turn, lastID string) []codex.Turn {
 
 func renderHistoricalTurn(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, turn codex.Turn) {
 	initial, runLines, final := summarizeTurn(turn)
+	initial = truncateSyncText(initial)
+	final = truncateSyncText(final)
+	runLines = truncateRunLines(runLines)
 	if strings.TrimSpace(initial) != "" {
 		_ = sendSilentRichMessage(ctx, b, chatID, messageThreadID, initial)
 	}
@@ -118,6 +155,106 @@ func renderHistoricalTurn(ctx context.Context, b *bot.Bot, chatID int64, message
 	} else {
 		_ = sendRichMessage(ctx, b, chatID, messageThreadID, fmt.Sprintf("Synced Codex turn `%s`.", turn.ID))
 	}
+}
+
+func (a *app) syncRecentAttachedHistory(ctx context.Context, b *bot.Bot, conv *state.Conversation) error {
+	c, err := codex.StartStdioWithOptions(ctx, codex.StartOptions{
+		CLIPath:    a.cfg.Codex.CLIPath,
+		WorkingDir: appServerWorkingDir(*conv),
+	})
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = c.Close()
+	}()
+	go func() {
+		for err := range c.Errors() {
+			log.Printf("codex app-server: %v", err)
+		}
+	}()
+	if err := a.resumeCodexThread(ctx, c, conv.CodexThreadID); err != nil {
+		return err
+	}
+	var read codex.ThreadReadResponse
+	if err := c.Call(ctx, "thread/read", map[string]any{"threadId": conv.CodexThreadID}, &read); err != nil {
+		return err
+	}
+	turns := recentCompletedTurnsByMessageBudget(read.Thread.Turns, attachSyncMessages)
+	for _, turn := range turns {
+		renderHistoricalTurn(ctx, b, conv.ChatID, conv.MessageThreadID, turn)
+		conv.LastSyncedTurnID = turn.ID
+	}
+	if conv.LastSyncedTurnID != "" {
+		if err := a.store.Upsert(*conv); err != nil {
+			log.Printf("store attach sync marker: %v", err)
+		}
+	}
+	return nil
+}
+
+func recentCompletedTurnsByMessageBudget(turns []codex.Turn, maxMessages int) []codex.Turn {
+	if maxMessages <= 0 {
+		return nil
+	}
+	var selected []codex.Turn
+	count := 0
+	for i := len(turns) - 1; i >= 0; i-- {
+		turn := turns[i]
+		if turn.Status != "completed" {
+			continue
+		}
+		turnMessages := historicalTurnMessageCount(turn)
+		if turnMessages == 0 {
+			turnMessages = 1
+		}
+		if len(selected) > 0 && count+turnMessages > maxMessages {
+			break
+		}
+		selected = append(selected, turn)
+		count += turnMessages
+		if count >= maxMessages {
+			break
+		}
+	}
+	for i, j := 0, len(selected)-1; i < j; i, j = i+1, j-1 {
+		selected[i], selected[j] = selected[j], selected[i]
+	}
+	return selected
+}
+
+func historicalTurnMessageCount(turn codex.Turn) int {
+	initial, runLines, final := summarizeTurn(turn)
+	count := 0
+	if strings.TrimSpace(initial) != "" {
+		count++
+	}
+	if len(runLines) > 0 {
+		count++
+	}
+	if strings.TrimSpace(final) != "" {
+		count++
+	} else {
+		count++
+	}
+	return count
+}
+
+func truncateRunLines(lines []string) []string {
+	if len(lines) <= maxSyncRunLogLines {
+		return lines
+	}
+	out := append([]string(nil), lines[:maxSyncRunLogLines]...)
+	out = append(out, fmt.Sprintf("... truncated %d more run log lines", len(lines)-maxSyncRunLogLines))
+	return out
+}
+
+func truncateSyncText(text string) string {
+	runes := []rune(strings.TrimSpace(text))
+	if len(runes) <= maxSyncTextRunes {
+		return string(runes)
+	}
+	return string(runes[:maxSyncTextRunes]) + "\n\n... truncated by /sync limit"
 }
 
 func summarizeTurn(turn codex.Turn) (string, []string, string) {

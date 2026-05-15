@@ -189,6 +189,9 @@ Commands are registered only for authorized chats.
 
 - `/new [title]` creates a new topic for a one-off Codex chat.
 - `/new project query: title` creates a new topic pre-bound to a matched project.
+- `/sessions [query]` browses existing Codex sessions by project and attaches
+  one to the current Telegram topic. Attaching syncs the most recent 100
+  rendered history messages by default.
 - `/side [message]` or `/btw [message]` forks the current Codex chat into a
   prefixed side topic.
   If `message` is present, Dexgram starts it in the new side topic immediately.
@@ -196,7 +199,9 @@ Commands are registered only for authorized chats.
 - `/project <project name>` binds a new topic to a Codex Desktop project before
   the first prompt. Ambiguous matches get inline selection buttons.
 - `/status` shows the topic mapping, project/cwd, and active turn state.
-- `/sync` mirrors completed Codex turns that have not been synced yet.
+- `/sync [limit]` mirrors completed Codex turns that have not been synced yet.
+  It defaults to 1 turn, caps at 5 turns, and truncates oversized historical
+  output.
 - `/update` updates Dexgram and restarts the bridge.
 - `/steer <message>` steers the currently active Codex turn.
 - `/goal <objective>` sets the native Codex goal for the topic.
@@ -208,7 +213,9 @@ Commands are registered only for authorized chats.
 
 ## How Chats Run
 
-On the first prompt in a Telegram topic, Dexgram starts a Codex thread and saves
+On the first prompt in a Telegram topic that has no project or Codex thread,
+Dexgram asks whether to resume an existing session, start a new chat, or set a
+project first. Once a choice creates or attaches a Codex thread, Dexgram saves
 the mapping by Telegram `chat_id` and `message_thread_id`. Later messages in
 that topic reuse the stored Codex thread.
 

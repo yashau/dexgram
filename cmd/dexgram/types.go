@@ -25,10 +25,14 @@ type app struct {
 	projectsMu            sync.RWMutex
 	active                map[string]*activeTurn
 	actions               map[string]turnAction
+	freshTopics           map[string]*pendingFreshTopic
+	sessionBrowsers       map[string]*sessionBrowser
 	approvals             map[string]*pendingApproval
 	inputs                map[string]*pendingInput
 	approvalSeq           atomic.Int64
 	actionSeq             atomic.Int64
+	freshSeq              atomic.Int64
+	sessionBrowserSeq     atomic.Int64
 	queueSeq              atomic.Int64
 	inputSeq              atomic.Int64
 	projects              []codexprojects.Project
@@ -72,6 +76,35 @@ type telegramTurn struct {
 type turnAction struct {
 	Key    string
 	TurnID string
+}
+
+type pendingFreshTopic struct {
+	chatID            int64
+	messageThreadID   int
+	replyMessageID    int
+	input             []map[string]any
+	displayText       string
+	collaborationMode string
+	createdAt         time.Time
+}
+
+type sessionBrowser struct {
+	chatID          int64
+	messageThreadID int
+	pendingFreshKey string
+	query           string
+	threads         []codex.Thread
+	projects        []sessionProjectGroup
+	projectIndex    int
+	page            int
+	createdAt       time.Time
+}
+
+type sessionProjectGroup struct {
+	Name        string
+	CWD         string
+	ThreadCount int
+	ThreadIDs   []int
 }
 
 type pendingApproval struct {

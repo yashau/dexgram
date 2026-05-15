@@ -110,6 +110,10 @@ Config
 
 Telegram Commands
 
+  /sessions [query]
+      Browse existing Codex sessions by project and attach one to this topic.
+      Attaching syncs the most recent 100 rendered history messages.
+
   /new [title]
       Create a new Telegram topic for a one-off Codex chat.
 
@@ -131,9 +135,9 @@ Telegram Commands
   /status
       Show this topic's Dexgram mapping, project/cwd, and active turn state.
 
-  /sync
+  /sync [limit]
       Manually mirror completed Codex turns that are not yet marked as synced
-      for this Telegram topic.
+      for this Telegram topic. Defaults to 1 turn and caps at 5.
 
   /steer <message>
       Steer the currently active Codex turn.

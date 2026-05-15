@@ -69,6 +69,12 @@ func (a *app) handleUpdate(ctx context.Context, b *bot.Bot, update *models.Updat
 		a.handleNewCommand(ctx, b, msg, commandText)
 		return
 	}
+	if isCommand && commandName == "sessions" {
+		goFatal(func() {
+			a.handleSessionsCommand(ctx, b, msg, commandArg)
+		})
+		return
+	}
 	if isCommand && (commandName == "side" || commandName == "btw") {
 		goFatal(func() {
 			a.handleSideCommand(ctx, b, msg, commandArg)
@@ -81,7 +87,7 @@ func (a *app) handleUpdate(ctx context.Context, b *bot.Bot, update *models.Updat
 	}
 	if isCommand && commandName == "sync" {
 		goFatal(func() {
-			a.handleSyncCommand(ctx, b, msg)
+			a.handleSyncCommand(ctx, b, msg, commandArg)
 		})
 		return
 	}
@@ -444,6 +450,14 @@ func (a *app) handleCallback(ctx context.Context, b *bot.Bot, query *models.Call
 	}
 	if strings.HasPrefix(query.Data, "effort:") {
 		a.handleEffortCallback(ctx, b, query)
+		return
+	}
+	if strings.HasPrefix(query.Data, "fresh:") {
+		a.handleFreshTopicCallback(ctx, b, query)
+		return
+	}
+	if strings.HasPrefix(query.Data, "sess:") {
+		a.handleSessionBrowserCallback(ctx, b, query)
 		return
 	}
 	if !strings.HasPrefix(query.Data, "project:") {

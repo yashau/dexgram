@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -18,7 +21,6 @@ func (a *app) handlePlanPrompt(ctx context.Context, b *bot.Bot, msg *models.Mess
 }
 
 func (a *app) handlePromptWithMode(ctx context.Context, b *bot.Bot, msg *models.Message, prompt, collaborationMode string) {
-	key := fmt.Sprintf("%d:%d", msg.Chat.ID, msg.MessageThreadID)
 	input, displayText, err := a.buildTurnInput(ctx, b, msg, prompt)
 	if err != nil {
 		log.Printf("build turn input failed: %v", err)
@@ -30,15 +32,25 @@ func (a *app) handlePromptWithMode(ctx context.Context, b *bot.Bot, msg *models.
 		return
 	}
 
+	if collaborationMode == "" && a.shouldAskFreshTopicChoice(msg.Chat.ID, msg.MessageThreadID) {
+		a.askFreshTopicChoice(ctx, b, msg, input, displayText)
+		return
+	}
+
+	a.submitBuiltPrompt(ctx, b, msg.Chat.ID, msg.MessageThreadID, msg.ID, input, displayText, collaborationMode)
+}
+
+func (a *app) submitBuiltPrompt(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, replyMessageID int, input []map[string]any, displayText, collaborationMode string) {
+	key := fmt.Sprintf("%d:%d", chatID, messageThreadID)
 	session := a.activeSession(key)
 	if session == nil {
 		var err error
-		session, err = a.startTopicSession(ctx, key, msg.Chat.ID, msg.MessageThreadID, displayText)
+		session, err = a.startTopicSession(ctx, key, chatID, messageThreadID, displayText)
 		if err != nil {
 			log.Printf("start codex session: %v", err)
 			_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
-				ChatID:          msg.Chat.ID,
-				MessageThreadID: msg.MessageThreadID,
+				ChatID:          chatID,
+				MessageThreadID: messageThreadID,
 				Text:            "Dexgram hit an error while starting Codex:\n\n" + err.Error(),
 			})
 			return
@@ -53,8 +65,8 @@ func (a *app) handlePromptWithMode(ctx context.Context, b *bot.Bot, msg *models.
 		if optErr != nil {
 			log.Printf("codex turn options failed: %v", optErr)
 			_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
-				ChatID:          msg.Chat.ID,
-				MessageThreadID: msg.MessageThreadID,
+				ChatID:          chatID,
+				MessageThreadID: messageThreadID,
 				Text:            "Dexgram could not prepare the message for Codex:\n\n" + optErr.Error(),
 			})
 			return
@@ -63,8 +75,8 @@ func (a *app) handlePromptWithMode(ctx context.Context, b *bot.Bot, msg *models.
 		if err != nil {
 			log.Printf("codex turn start failed: %v", err)
 			_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
-				ChatID:          msg.Chat.ID,
-				MessageThreadID: msg.MessageThreadID,
+				ChatID:          chatID,
+				MessageThreadID: messageThreadID,
 				Text:            "Dexgram could not submit the message to Codex:\n\n" + err.Error(),
 			})
 			return
@@ -72,15 +84,15 @@ func (a *app) handlePromptWithMode(ctx context.Context, b *bot.Bot, msg *models.
 	} else {
 		turnID = a.nextQueuedTurnID()
 	}
-	if err := a.store.ClearStagedAttachments(msg.Chat.ID, msg.MessageThreadID); err != nil {
+	if err := a.store.ClearStagedAttachments(chatID, messageThreadID); err != nil {
 		log.Printf("clear staged attachments: %v", err)
 	}
 
 	tgTurn := &telegramTurn{
 		TurnID:            turnID,
 		Queued:            queued,
-		ChatID:            msg.Chat.ID,
-		MessageThreadID:   msg.MessageThreadID,
+		ChatID:            chatID,
+		MessageThreadID:   messageThreadID,
 		Text:              displayText,
 		Input:             input,
 		CollaborationMode: normalizeCollaborationMode(collaborationMode),
@@ -90,12 +102,12 @@ func (a *app) handlePromptWithMode(ctx context.Context, b *bot.Bot, msg *models.
 	if queued {
 		actionToken := a.rememberTurnAction(key, turnID)
 		status, err := b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID:          msg.Chat.ID,
-			MessageThreadID: msg.MessageThreadID,
+			ChatID:          chatID,
+			MessageThreadID: messageThreadID,
 			Text:            "Queued for Codex.",
 			ReplyParameters: &models.ReplyParameters{
-				MessageID:                msg.ID,
-				ChatID:                   msg.Chat.ID,
+				MessageID:                replyMessageID,
+				ChatID:                   chatID,
 				AllowSendingWithoutReply: true,
 			},
 			ReplyMarkup:         turnControlMarkup(actionToken, true),
@@ -107,8 +119,8 @@ func (a *app) handlePromptWithMode(ctx context.Context, b *bot.Bot, msg *models.
 	} else {
 		actionToken := a.rememberTurnAction(key, turnID)
 		status, err := b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID:              msg.Chat.ID,
-			MessageThreadID:     msg.MessageThreadID,
+			ChatID:              chatID,
+			MessageThreadID:     messageThreadID,
 			Text:                "Dexgram is thinking...",
 			ReplyMarkup:         turnControlMarkup(actionToken, false),
 			DisableNotification: true,
@@ -123,5 +135,75 @@ func (a *app) handlePromptWithMode(ctx context.Context, b *bot.Bot, msg *models.
 			return
 		}
 	}
-	a.startTypingIndicator(key, msg.Chat.ID, msg.MessageThreadID)
+	a.startTypingIndicator(key, chatID, messageThreadID)
+}
+
+func (a *app) shouldAskFreshTopicChoice(chatID int64, messageThreadID int) bool {
+	conv, ok, err := a.store.Get(chatID, messageThreadID)
+	if err != nil {
+		log.Printf("read conversation before fresh topic choice: %v", err)
+		return false
+	}
+	if !ok {
+		return true
+	}
+	return conv.CodexThreadID == "" &&
+		strings.TrimSpace(conv.ProjectName) == "" &&
+		strings.TrimSpace(conv.CWD) == ""
+}
+
+func (a *app) askFreshTopicChoice(ctx context.Context, b *bot.Bot, msg *models.Message, input []map[string]any, displayText string) {
+	token := a.rememberFreshTopic(&pendingFreshTopic{
+		chatID:          msg.Chat.ID,
+		messageThreadID: msg.MessageThreadID,
+		replyMessageID:  msg.ID,
+		input:           input,
+		displayText:     displayText,
+		createdAt:       time.Now(),
+	})
+	_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID:          msg.Chat.ID,
+		MessageThreadID: msg.MessageThreadID,
+		Text:            "How should Dexgram use this message?",
+		ReplyParameters: &models.ReplyParameters{
+			MessageID:                msg.ID,
+			ChatID:                   msg.Chat.ID,
+			AllowSendingWithoutReply: true,
+		},
+		ReplyMarkup: &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+			{{Text: "Resume session", CallbackData: "fresh:" + token + ":sessions"}},
+			{{Text: "Start new chat", CallbackData: "fresh:" + token + ":new"}},
+			{{Text: "Set project first", CallbackData: "fresh:" + token + ":project"}},
+		}},
+		DisableNotification: true,
+	})
+}
+
+func (a *app) rememberFreshTopic(pending *pendingFreshTopic) string {
+	token := strconv.FormatInt(a.freshSeq.Add(1), 36)
+	a.mu.Lock()
+	if a.freshTopics == nil {
+		a.freshTopics = map[string]*pendingFreshTopic{}
+	}
+	a.freshTopics[token] = pending
+	a.mu.Unlock()
+	return token
+}
+
+func (a *app) takeFreshTopic(token string) (*pendingFreshTopic, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	pending := a.freshTopics[token]
+	if pending == nil {
+		return nil, false
+	}
+	delete(a.freshTopics, token)
+	return pending, true
+}
+
+func (a *app) freshTopic(token string) (*pendingFreshTopic, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	pending := a.freshTopics[token]
+	return pending, pending != nil
 }

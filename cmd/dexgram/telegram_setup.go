@@ -40,6 +40,12 @@ func reconcileCommands(ctx context.Context, b *bot.Bot, chatIDs []int64) error {
 		}); err != nil {
 			return fmt.Errorf("register chat commands for %d: %w", chatID, err)
 		}
+		if _, err := b.SetChatMenuButton(ctx, &bot.SetChatMenuButtonParams{
+			ChatID:     chatID,
+			MenuButton: &models.MenuButtonCommands{},
+		}); err != nil {
+			log.Printf("set Telegram menu button for chat_id=%d: %v", chatID, err)
+		}
 	}
 	log.Printf("telegram slash commands registered for chat_ids=%v", chatIDs)
 	return nil
@@ -60,6 +66,7 @@ func telegramCommandClearScopes(chatIDs []int64) []models.BotCommandScope {
 
 func telegramCommands() []models.BotCommand {
 	return []models.BotCommand{
+		{Command: "sessions", Description: "Browse and attach existing Codex sessions"},
 		{Command: "project", Description: "Set the Codex project before this chat starts"},
 		{Command: "new", Description: "Create a new Telegram topic for a Codex chat"},
 		{Command: "side", Description: "Fork this Codex chat into a side topic"},
