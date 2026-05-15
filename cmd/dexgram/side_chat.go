@@ -28,7 +28,7 @@ func (a *app) handleSideCommand(ctx context.Context, b *bot.Bot, msg *models.Mes
 		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:          msg.Chat.ID,
 			MessageThreadID: msg.MessageThreadID,
-			Text:            "Start this Codex chat first, then use /side to fork its current context.",
+			Text:            "Start this Codex chat first, then use /side or /btw to fork its current context.",
 		})
 		return
 	}

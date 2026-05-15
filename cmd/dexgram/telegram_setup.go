@@ -63,6 +63,7 @@ func telegramCommands() []models.BotCommand {
 		{Command: "project", Description: "Set the Codex project before this chat starts"},
 		{Command: "new", Description: "Create a new Telegram topic for a Codex chat"},
 		{Command: "side", Description: "Fork this Codex chat into a side topic"},
+		{Command: "btw", Description: "Alias for /side"},
 		{Command: "status", Description: "Show this topic's Dexgram mapping and turn state"},
 		{Command: "sync", Description: "Mirror completed Codex turns into this topic"},
 		{Command: "update", Description: "Update Dexgram and restart the bridge"},

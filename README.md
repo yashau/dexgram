@@ -189,7 +189,8 @@ Commands are registered only for authorized chats.
 
 - `/new [title]` creates a new topic for a one-off Codex chat.
 - `/new project query: title` creates a new topic pre-bound to a matched project.
-- `/side [message]` forks the current Codex chat into a prefixed side topic.
+- `/side [message]` or `/btw [message]` forks the current Codex chat into a
+  prefixed side topic.
   If `message` is present, Dexgram starts it in the new side topic immediately.
   The source topic must already be an active registered Codex thread.
 - `/project <project name>` binds a new topic to a Codex Desktop project before
@@ -213,20 +214,20 @@ that topic reuse the stored Codex thread.
 
 ### Side Chats
 
-Use `/side` inside an existing Codex topic to open a separate side topic from
-the current context. Dexgram names side topics with a `↳N` prefix, such as
-`↳1 Dexgram: auth flow`, while leaving the parent topic name unchanged.
+Use `/side` or `/btw` inside an existing Codex topic to open a separate side
+topic from the current context. Dexgram names side topics with a `↳N` prefix,
+such as `↳1 Dexgram: auth flow`, while leaving the parent topic name unchanged.
 
 Side chats are real Codex thread forks. They keep the parent topic's project and
 cwd, can call tools, ask for approvals, run commands, edit files, and continue
 independently after the fork. You can create multiple side chats from the same
 parent topic; each one gets the next number.
 
-`/side` is guarded: it only works after the source topic has already started and
-registered a Codex thread. A fresh `/new` topic or project-only topic needs its
-first normal Codex message before it can be forked. If the parent thread is idle,
-Dexgram resumes it first and only creates the Telegram side topic after Codex
-accepts the fork.
+`/side` and `/btw` are guarded: they only work after the source topic has
+already started and registered a Codex thread. A fresh `/new` topic or
+project-only topic needs its first normal Codex message before it can be forked.
+If the parent thread is idle, Dexgram resumes it first and only creates the
+Telegram side topic after Codex accepts the fork.
 
 You can also include the first side-chat prompt in the command:
 

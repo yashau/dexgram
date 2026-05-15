@@ -120,6 +120,9 @@ Telegram Commands
       Fork this Codex chat into a prefixed side topic. If a message is given,
       Dexgram starts it in the new side topic immediately.
 
+  /btw [message]
+      Alias for /side.
+
   /project <project name>
       Fuzzy-select the Codex project before the first real prompt in a topic.
       If the match is ambiguous, Dexgram sends inline selection buttons.

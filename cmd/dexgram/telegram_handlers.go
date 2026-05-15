@@ -69,7 +69,7 @@ func (a *app) handleUpdate(ctx context.Context, b *bot.Bot, update *models.Updat
 		a.handleNewCommand(ctx, b, msg, commandText)
 		return
 	}
-	if isCommand && commandName == "side" {
+	if isCommand && (commandName == "side" || commandName == "btw") {
 		goFatal(func() {
 			a.handleSideCommand(ctx, b, msg, commandArg)
 		})
