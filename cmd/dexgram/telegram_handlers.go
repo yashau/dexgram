@@ -809,6 +809,9 @@ func (a *app) handleStatusCommand(ctx context.Context, b *bot.Bot, msg *models.M
 		if conv.SideChat {
 			parts = append(parts, fmt.Sprintf("Side chat: #%d from Telegram thread %d", conv.SideIndex, conv.ParentMessageThreadID))
 		}
+		if conv.CodexThreadID != "" {
+			parts = append(parts, "Desktop reply mirror: on")
+		}
 		projectLabel := conv.ProjectName
 		if conv.Projectless || projectLabel == "" {
 			projectLabel = "none"

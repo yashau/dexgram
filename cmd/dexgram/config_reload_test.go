@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"dexgram/internal/config"
+
+	"github.com/fsnotify/fsnotify"
 )
 
 func TestReloadConfigIfChangedReloadsTokenAndCodexSettings(t *testing.T) {
@@ -62,5 +64,21 @@ sandbox = "workspace-write"
 	}
 	if app.cfg.Codex.ApprovalPolicy != "on-request" || app.cfg.Codex.Sandbox != "workspace-write" {
 		t.Fatalf("codex config was not reloaded: %+v", app.cfg.Codex)
+	}
+}
+
+func TestConfigFileEventMatches(t *testing.T) {
+	path := filepath.Join("C:", "Dexgram", "dexgram.toml")
+	if !configFileEventMatches(fsnotify.Event{Name: path, Op: fsnotify.Write}, path) {
+		t.Fatal("expected write event for config file to match")
+	}
+	if !configFileEventMatches(fsnotify.Event{Name: path, Op: fsnotify.Rename}, path) {
+		t.Fatal("expected rename event for config file to match")
+	}
+	if configFileEventMatches(fsnotify.Event{Name: path, Op: fsnotify.Chmod}, path) {
+		t.Fatal("chmod should not trigger config reload")
+	}
+	if configFileEventMatches(fsnotify.Event{Name: filepath.Join("C:", "Dexgram", "other.toml"), Op: fsnotify.Write}, path) {
+		t.Fatal("different file should not match")
 	}
 }

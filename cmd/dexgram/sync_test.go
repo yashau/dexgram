@@ -70,6 +70,25 @@ func TestSummarizeTurnFallsBackToLastAgentMessage(t *testing.T) {
 	}
 }
 
+func TestTurnUserPromptExtractsTextContent(t *testing.T) {
+	turn := codex.Turn{Items: []codex.ThreadItem{
+		{Type: "userMessage", Content: []byte(`[{"type":"text","text":"Desktop prompt\nsecond line","text_elements":[]}]`)},
+		{Type: "agentMessage", Text: "answer"},
+	}}
+
+	if got := turnUserPrompt(turn); got != "Desktop prompt\nsecond line" {
+		t.Fatalf("turnUserPrompt = %q", got)
+	}
+}
+
+func TestPrefixQuotedPrompt(t *testing.T) {
+	got := prefixQuotedPrompt("First line\n\nSecond line", "Answer")
+	want := "> First line\n>\n> Second line\n\nAnswer"
+	if got != want {
+		t.Fatalf("prefixQuotedPrompt = %q, want %q", got, want)
+	}
+}
+
 func TestParseSyncLimitDefaultsAndCaps(t *testing.T) {
 	if got, err := parseSyncLimit(""); err != nil || got != defaultSyncTurnLimit {
 		t.Fatalf("default sync limit = %d, %v", got, err)

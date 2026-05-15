@@ -214,7 +214,8 @@ Commands are registered only for authorized chats.
 - `/sessions [query]` opens the session browser. Dexgram lists projects first,
   then paginated Codex threads inside the selected project. Attach one to the
   current Telegram topic and Dexgram syncs the most recent 25 rendered history
-  messages by default.
+  messages by default. New completed Desktop replies after attach are mirrored
+  into the topic.
 - `/new [title]` creates a new topic for a one-off Codex chat.
 - `/new project query: title` creates a new topic already bound to a matched
   Codex project.
@@ -244,8 +245,8 @@ Dexgram asks whether to resume an existing session, start a new chat, or set a
 project first.
 
 - **Resume a session** opens the `/sessions` browser, attaches the selected
-  Codex thread to the topic, syncs recent history, then submits your waiting
-  message.
+  Codex thread to the topic, syncs recent history, starts live Desktop reply
+  mirroring, then submits your waiting message.
 - **Start new chat** creates a fresh Codex thread for that topic.
 - **Set project first** lets you bind the topic with `/project` before sending
   work to Codex.
@@ -263,8 +264,10 @@ attached to that Codex session.
 
 Attach sync is intentionally bounded. Dexgram mirrors up to the most recent 25
 rendered Telegram history messages so you get context without flooding the
-topic. Manual `/sync [limit]` is also bounded: one completed turn by default,
-five at most.
+topic. After attach, Dexgram watches Codex's session JSONL file and mirrors new
+completed Desktop turns after the saved sync marker. Mirrored Desktop replies
+include the Desktop prompt as a Markdown quote before the answer. Manual
+`/sync [limit]` is also bounded: one completed turn by default, five at most.
 
 ### Side Chats
 
@@ -341,7 +344,8 @@ Images are sent as photos. Everything else is sent as a document.
 
 - Dexgram can attach existing Codex sessions exposed by Codex app-server, but it
   does not bulk-import your entire Codex history into Telegram.
-- Attach sync is capped at the most recent 25 rendered Telegram messages.
+- Attach sync is capped at the most recent 25 rendered Telegram messages. New
+  completed Desktop replies after attach are mirrored into the attached topic.
 - Manual `/sync` is intentionally capped and truncated so one command cannot
   flood a topic with a huge historical transcript.
 - Dexgram is Windows-only by design.

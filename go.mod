@@ -5,6 +5,7 @@ go 1.26
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/eekstunt/telegramify-markdown-go v0.2.0
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-telegram/bot v1.20.0
 	modernc.org/sqlite v1.50.1
 )

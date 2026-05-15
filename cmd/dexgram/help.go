@@ -112,7 +112,8 @@ Telegram Commands
 
   /sessions [query]
       Browse existing Codex sessions by project and attach one to this topic.
-      Attaching syncs the most recent 25 rendered history messages.
+      Attaching syncs the most recent 25 rendered history messages, then
+      mirrors new completed Desktop replies into the topic.
 
   /new [title]
       Create a new Telegram topic for a one-off Codex chat.
@@ -188,6 +189,12 @@ Runtime Behavior
 
   Live status and run-log messages are sent silently. Final answers, approval
   prompts, and user-input prompts use normal Telegram notifications.
+
+  For attached sessions, Dexgram watches the Codex session JSONL file under
+  %%USERPROFILE%%\.codex\sessions and mirrors completed Desktop turns after the
+  saved sync marker. Mirrored Desktop replies include the Desktop prompt as a
+  Markdown quote before the answer. This keeps phone topics caught up without
+  bulk-importing the whole Codex history.
 
   Telegram photos/image documents are sent to Codex as localImage inputs.
   Generic documents are downloaded, mentioned, and included by absolute path.

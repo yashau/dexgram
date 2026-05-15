@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"slices"
 	"time"
 
 	"dexgram/internal/config"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
@@ -38,19 +40,56 @@ func (s configFileState) equal(other configFileState) bool {
 }
 
 func (a *app) watchConfigChanges(ctx context.Context, b *bot.Bot, restart chan<- struct{}) {
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Printf("config file watcher: %v", err)
+	} else if err := watcher.Add(filepath.Dir(a.configPath)); err != nil {
+		log.Printf("config file watcher add %s: %v", filepath.Dir(a.configPath), err)
+		_ = watcher.Close()
+		watcher = nil
+	}
+	defer func() {
+		if watcher != nil {
+			_ = watcher.Close()
+		}
+	}()
+
+	fallback := time.NewTicker(2 * time.Second)
+	defer fallback.Stop()
+	reload := func() bool {
+		result := a.reloadConfigIfChanged(ctx, b)
+		if result.botTokenChanged {
+			select {
+			case restart <- struct{}{}:
+			default:
+			}
+			return true
+		}
+		return false
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			result := a.reloadConfigIfChanged(ctx, b)
-			if result.botTokenChanged {
-				select {
-				case restart <- struct{}{}:
-				default:
-				}
+		case event, ok := <-configWatcherEvents(watcher):
+			if !ok {
+				watcher = nil
+				continue
+			}
+			if !configFileEventMatches(event, a.configPath) {
+				continue
+			}
+			if reload() {
+				return
+			}
+		case err, ok := <-configWatcherErrors(watcher):
+			if !ok {
+				watcher = nil
+				continue
+			}
+			log.Printf("config file watcher: %v", err)
+		case <-fallback.C:
+			if reload() {
 				return
 			}
 		}
@@ -125,4 +164,28 @@ func reconcileChangedCommands(ctx context.Context, b *bot.Bot, oldChatIDs, newCh
 	}
 	log.Printf("telegram slash commands reloaded for chat_ids=%v", newChatIDs)
 	return nil
+}
+
+func configWatcherEvents(watcher *fsnotify.Watcher) <-chan fsnotify.Event {
+	if watcher == nil {
+		return nil
+	}
+	return watcher.Events
+}
+
+func configWatcherErrors(watcher *fsnotify.Watcher) <-chan error {
+	if watcher == nil {
+		return nil
+	}
+	return watcher.Errors
+}
+
+func configFileEventMatches(event fsnotify.Event, path string) bool {
+	if event.Name == "" {
+		return false
+	}
+	if filepath.Clean(event.Name) != filepath.Clean(path) {
+		return false
+	}
+	return event.Has(fsnotify.Write) || event.Has(fsnotify.Create) || event.Has(fsnotify.Rename)
 }

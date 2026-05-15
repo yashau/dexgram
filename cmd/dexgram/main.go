@@ -128,6 +128,7 @@ func run() error {
 		approvals:             map[string]*pendingApproval{},
 		actions:               map[string]turnAction{},
 		inputs:                map[string]*pendingInput{},
+		mirrorRefresh:         make(chan struct{}, 1),
 		typingSuppressedUntil: map[string]time.Time{},
 	}
 	if len(cfg.Telegram.ChatIDs) == 0 {
@@ -192,6 +193,7 @@ func (a *app) runTelegram(ctx context.Context, checkOnly bool) error {
 		pollCtx, cancelPoll := context.WithCancel(ctx)
 		restart := make(chan struct{}, 1)
 		go a.watchConfigChanges(pollCtx, tg, restart)
+		go a.runDesktopMirrors(pollCtx)
 
 		stopped := make(chan struct{})
 		go func() {

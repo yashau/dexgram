@@ -541,8 +541,10 @@ func (a *app) attachSessionFromBrowser(ctx context.Context, b *bot.Bot, query *m
 		})
 	}
 	_, _ = b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: query.ID, Text: "Session attached."})
+	syncText := "Synced recent history."
 	if err := a.syncRecentAttachedHistory(ctx, b, &conv); err != nil {
 		log.Printf("sync attached session history: %v", err)
+		syncText = "Recent history sync failed; live Desktop replies will still be mirrored from now on."
 		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:              browser.chatID,
 			MessageThreadID:     browser.messageThreadID,
@@ -554,9 +556,10 @@ func (a *app) attachSessionFromBrowser(ctx context.Context, b *bot.Bot, query *m
 		_, _ = b.EditMessageText(ctx, &bot.EditMessageTextParams{
 			ChatID:    query.Message.Message.Chat.ID,
 			MessageID: query.Message.Message.ID,
-			Text:      fmt.Sprintf("Attached Codex session: %s\nSynced recent history.", title),
+			Text:      fmt.Sprintf("Attached Codex session: %s\n%s Live Desktop replies will be mirrored here.", title, syncText),
 		})
 	}
+	a.requestMirrorRefresh()
 	if browser.pendingFreshKey == "" {
 		return
 	}

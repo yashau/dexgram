@@ -35,6 +35,7 @@ type app struct {
 	sessionBrowserSeq     atomic.Int64
 	queueSeq              atomic.Int64
 	inputSeq              atomic.Int64
+	mirrorRefresh         chan struct{}
 	projects              []codexprojects.Project
 	lastTypingAt          time.Time
 	typingSuppressedUntil map[string]time.Time

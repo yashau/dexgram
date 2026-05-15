@@ -111,6 +111,34 @@ func TestStoreGetMissingConversation(t *testing.T) {
 	}
 }
 
+func TestStoreListConversationsOrdersAndRoundTrips(t *testing.T) {
+	store := openTestStore(t)
+	defer closeTestStore(t, store)
+
+	convs := []Conversation{
+		{ChatID: 2, MessageThreadID: 9, CodexThreadID: "thread-b", LastSyncedTurnID: "turn-b"},
+		{ChatID: 1, MessageThreadID: 4, CodexThreadID: "thread-a", ProjectName: "Dexgram", CWD: `C:\work\dexgram`, TopicNamed: true},
+	}
+	for _, conv := range convs {
+		if err := store.Upsert(conv); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := store.ListConversations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 conversations, got %d", len(got))
+	}
+	assertConversationFields(t, got[0], convs[1])
+	assertConversationFields(t, got[1], convs[0])
+	if got[0].UpdatedAt == "" || got[1].UpdatedAt == "" {
+		t.Fatalf("expected UpdatedAt timestamps: %#v", got)
+	}
+}
+
 func TestStoreStagedAttachmentsAreOrderedScopedAndClearable(t *testing.T) {
 	store := openTestStore(t)
 	defer closeTestStore(t, store)

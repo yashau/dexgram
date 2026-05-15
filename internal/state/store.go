@@ -163,6 +163,31 @@ WHERE chat_id = ? AND message_thread_id = ?`, chatID, messageThreadID)
 	return conv, true, nil
 }
 
+func (s *Store) ListConversations() ([]Conversation, error) {
+	rows, err := s.db.Query(`
+SELECT chat_id, message_thread_id, codex_thread_id, project_name, cwd, projectless,
+       topic_title, topic_named, side_chat, parent_chat_id, parent_message_thread_id,
+       parent_codex_thread_id, side_index, last_synced_turn_id, updated_at
+FROM conversations
+ORDER BY chat_id, message_thread_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+
+	var out []Conversation
+	for rows.Next() {
+		conv, err := scanConversation(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, conv)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) Upsert(conv Conversation) error {
 	conv.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	_, err := s.db.Exec(`

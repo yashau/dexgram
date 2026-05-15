@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strconv"
@@ -141,6 +142,10 @@ func unsyncedTurns(turns []codex.Turn, lastID string) []codex.Turn {
 }
 
 func renderHistoricalTurn(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, turn codex.Turn) {
+	renderHistoricalTurnWithPrompt(ctx, b, chatID, messageThreadID, turn, "")
+}
+
+func renderHistoricalTurnWithPrompt(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, turn codex.Turn, prompt string) {
 	initial, runLines, final := summarizeTurn(turn)
 	initial = truncateSyncText(initial)
 	final = truncateSyncText(final)
@@ -160,9 +165,10 @@ func renderHistoricalTurn(ctx context.Context, b *bot.Bot, chatID int64, message
 		})
 	}
 	if strings.TrimSpace(final) != "" {
+		final = prefixQuotedPrompt(prompt, final)
 		_ = sendRichMessage(ctx, b, chatID, messageThreadID, final)
 	} else {
-		_ = sendRichMessage(ctx, b, chatID, messageThreadID, fmt.Sprintf("Synced Codex turn `%s`.", turn.ID))
+		_ = sendRichMessage(ctx, b, chatID, messageThreadID, prefixQuotedPrompt(prompt, fmt.Sprintf("Synced Codex turn `%s`.", turn.ID)))
 	}
 }
 
@@ -300,4 +306,61 @@ func summarizeTurn(turn codex.Turn) (string, []string, string) {
 		final = lastAgent
 	}
 	return strings.Join(initial, "\n\n"), runLines, final
+}
+
+func turnUserPrompt(turn codex.Turn) string {
+	var prompts []string
+	for _, item := range turn.Items {
+		if item.Type != "userMessage" {
+			continue
+		}
+		if text := strings.TrimSpace(item.Text); text != "" {
+			prompts = append(prompts, text)
+			continue
+		}
+		var content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		}
+		if len(item.Content) == 0 || json.Unmarshal(item.Content, &content) != nil {
+			continue
+		}
+		for _, part := range content {
+			if part.Type == "text" || part.Type == "input_text" {
+				if text := strings.TrimSpace(part.Text); text != "" {
+					prompts = append(prompts, text)
+				}
+			}
+		}
+	}
+	return strings.Join(prompts, "\n\n")
+}
+
+func prefixQuotedPrompt(prompt, body string) string {
+	prompt = truncatePromptQuote(prompt)
+	if prompt == "" {
+		return body
+	}
+	return markdownQuote(prompt) + "\n\n" + body
+}
+
+func markdownQuote(text string) string {
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			lines[i] = ">"
+		} else {
+			lines[i] = "> " + line
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func truncatePromptQuote(text string) string {
+	runes := []rune(strings.TrimSpace(text))
+	const maxPromptQuoteRunes = 1200
+	if len(runes) <= maxPromptQuoteRunes {
+		return string(runes)
+	}
+	return string(runes[:maxPromptQuoteRunes]) + "\n\n... prompt truncated"
 }
