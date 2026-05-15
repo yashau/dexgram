@@ -12,6 +12,16 @@ Side chats are Telegram topics created with `/side` or `/btw`. They are backed
 by native Codex `thread/fork`, keep the same project/cwd as the parent, and use
 a `↳N` topic-name prefix so they do not get confused with the main topic.
 
+Existing Codex sessions can be attached to Telegram topics through
+`/sessions [query]`. The browser lists projects first, then paginated threads
+inside a selected project. Attaching a session maps that topic to the existing
+Codex thread and syncs up to the most recent 25 rendered Telegram history
+messages.
+
+Fresh unbound topics must not silently become projectless chats on the first
+prompt. Dexgram should first ask whether to resume an existing session, start a
+new chat, or set a project first.
+
 The main command lives in `cmd/dexgram`. Shared packages live under `internal/`:
 
 - `internal/codex`: Codex app-server JSON-RPC client.
@@ -129,6 +139,8 @@ Dexgram is intentionally Windows-specific:
 - Running Dexgram hot-reloads config from disk. Reload all config values, not
   only `chat_ids`; if `telegram.bot_token` changes, the Telegram poller should
   reconnect with the new token.
+- Manual `/sync [limit]` mirrors unsynced completed turns, defaults to one turn,
+  caps at five turns, and truncates oversized historical output.
 
 Avoid replacing this Windows behavior with cross-platform assumptions unless
 the user explicitly asks for that.
