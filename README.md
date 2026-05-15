@@ -6,43 +6,102 @@
 ![Windows Only](https://img.shields.io/badge/Windows-Only-0078D4?style=for-the-badge&logo=windows11&logoColor=white)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?style=for-the-badge&logo=go&logoColor=white)](https://go.dev/)
 
-Dexgram is a Windows Telegram bridge for Codex Desktop. It runs as one binary,
-listens through your Telegram bot, and maps Telegram topics to resumable Codex
-threads.
+Codex, wired straight into Telegram topics.
 
-Unlike most Codex-to-Telegram bridges, Dexgram talks to Codex app-server instead
-of driving a plain CLI prompt. Telegram gets the rich stream: assistant text,
-live run-log updates, tool activity, file edits, final answers, approvals,
-input requests, and stop buttons. Tiny bridge, surprisingly roomy.
+Dexgram is a Windows-only bridge that lets a Telegram bot drive real Codex
+sessions. Each Telegram topic can become a resumable Codex thread, a
+project-bound workspace, a side quest fork, or an attached session you already
+started in Codex.
+
+It ships as a native Windows binary. No local web app to babysit, no Node
+runtime, no npm install, no surprise dependency pile just to send a prompt from
+your phone.
+
+It does not fake this by scraping a terminal. Dexgram talks to the Codex
+app-server, so Telegram gets the good stuff: assistant text, live run logs, tool
+activity, file edits, approvals, input requests, queued-message controls, and
+final answers. Your phone becomes a command deck for the Codex sessions already
+living on your Windows machine.
+
+## Why Dexgram Hits Different
+
+- **Native binary, tiny surface area**: install one Windows executable and run
+  it beside Codex. That is the whole stack.
+- **Topic-native Codex**: one Telegram topic maps to one Codex thread, so chats
+  stay tidy instead of melting into one long bot DM.
+- **Session teleportation**: browse existing Codex sessions by project, attach
+  one to a topic, and sync the recent history into Telegram.
+- **Real forks**: `/side` and `/btw` create native Codex thread forks in fresh
+  Telegram topics, perfect for tangents that should not derail the main run.
+- **Busy-turn ergonomics**: send messages while Codex is working, then steer or
+  delete queued user input before it is submitted.
+- **Local context**: project matching, local attachments, file links,
+  model settings, reasoning effort, goals, Plan Mode, and updates all work from
+  Telegram.
+
+## Why Telegram
+
+Remote coding tools usually make you pick a nuisance. Some need direct line of
+sight to your machine, which means VPNs, Tailscale, port forwarding, or other
+network gymnastics before your phone can reach your desktop. Some route your
+work through their own relay servers. Some try to become a whole IDE, dashboard,
+sync engine, and deployment story at once, then wobble under the weight.
+
+Dexgram takes the boring road on purpose. Telegram is already stable, fast,
+mobile-native, threaded, push-notification aware, file-friendly, and installed
+on the devices people actually carry. Dexgram only has to be the bridge between
+Telegram and Codex. Simple shape, fewer moving parts, smoother day.
 
 ## Features
 
-- Creates resumable Codex chats from Telegram topics.
-- Forks active Codex threads into separate Telegram side topics.
-- Keeps Dexgram-created chats visible in Codex Desktop history.
-- Supports project-bound chats with fuzzy Desktop project matching.
-- Creates dated one-off workspaces for projectless chats.
-- Mirrors live Codex progress, final answers, approvals, and input prompts.
-- Queues messages while Codex is busy, with buttons to steer or delete them.
-- Supports `/goal`, `/plan`, model selection, and reasoning effort selection.
-- Downloads Telegram photos and documents for Codex prompts.
-- Can upload final-answer local file links back to Telegram when enabled.
-- Authorizes Telegram chats by config, with short pairing codes for onboarding.
-- Hot-reloads config changes, including `chat_ids`, Codex settings, and bot token.
-- Runs as a current-user Windows login task, with a Startup-folder fallback.
+- **Native Windows binary**: no Node module, no background web bundle, no local
+  dashboard stack. Download `dexgram.exe`, configure your bot, and go.
+- **Session browser**: `/sessions [query]` lists projects first, then paginated
+  Codex threads inside each project. Attach one to the current topic and Dexgram
+  syncs the most recent 100 rendered history messages.
+- **First-message guardrail**: a brand-new topic no longer silently becomes a
+  projectless chat. Dexgram asks whether to resume a session, start fresh, or
+  set a project first.
+- **Project-bound chats**: fuzzy-match Codex projects with `/project`,
+  or create a topic already bound to a project with `/new project query: title`.
+- **Projectless workspaces**: start quick one-off chats in dated local
+  workspaces under your Documents folder.
+- **Native side chats**: fork active Codex threads into separate Telegram topics
+  with `/side` or `/btw`, keeping the same project and cwd.
+- **Live Codex stream**: mirror assistant messages, shell/tool progress, file
+  edits, media references, final answers, approvals, and input prompts.
+- **Queue controls**: when Codex is busy, user messages queue locally with
+  inline controls on the queued user message.
+- **Manual sync with brakes**: `/sync [limit]` defaults to one completed turn,
+  caps at five, and truncates oversized historical output.
+- **Codex controls**: use `/goal`, `/plan`, `/model`, `/effort`, `/stop`, and
+  `/status` from Telegram.
+- **Attachments**: send Telegram photos and documents into Codex prompts as
+  local files.
+- **Optional file upload-back**: final answers can upload explicitly linked
+  local files to Telegram when enabled.
+- **Safe onboarding**: authorize Telegram chats through config or short-lived
+  pairing codes. Unauthorized chats never reach Codex.
+- **Hot reload**: config changes reload live, including chat IDs, Codex
+  settings, and bot token rotation.
+- **Windows login task**: run Dexgram in the background as your signed-in user,
+  with a Startup-folder fallback.
 
 ## Windows Only
 
-Dexgram is intentionally Windows-only. Service mode uses a current-user Task
-Scheduler login task, falling back to the per-user Startup folder if Task
-Scheduler refuses.
+Dexgram is intentionally Windows-only. Codex is local, the app-server is
+local, and the bridge is happiest when it can live beside them.
 
-Because Windows gets nice things too.
+Service mode uses a current-user Task Scheduler login task, falling back to the
+per-user Startup folder if Task Scheduler refuses. It is not a Windows Service;
+it runs as you, because Codex runs as you.
+
+Because yes, Windows gets nice things too.
 
 ## Requirements
 
 - Windows
-- Codex Desktop installed and signed in
+- Codex installed and signed in
 - A Telegram bot token from `@BotFather`
 - Telegram threaded topics enabled for the bot
 
@@ -56,7 +115,7 @@ Bot Settings -> Threads Settings -> Threaded Mode
 
 ### Option 1: Install The Latest Release
 
-Run the installer:
+Run the installer from PowerShell:
 
 ```powershell
 irm https://raw.githubusercontent.com/yashau/dexgram/main/install.ps1 | iex
@@ -72,27 +131,28 @@ After onboarding, validate the setup:
 dexgram -check
 ```
 
-Start Dexgram:
+Start Dexgram in the foreground:
 
 ```powershell
 dexgram
 ```
 
-Or install the background login task:
+Or install the background login task so it starts when you sign in:
 
 ```powershell
 dexgram service install
 dexgram service start
 ```
 
-Update later with:
+Update later from PowerShell:
 
 ```powershell
 dexgram update
 ```
 
 You can also update from Telegram with `/update`. Dexgram announces before it
-restarts and again after it comes back.
+restarts and again after it comes back, which is exactly the kind of civilized
+behavior a bridge should have.
 
 ### Option 2: Manual Setup
 
@@ -170,7 +230,7 @@ dexgram service status
 ```
 
 This is not a Windows Service. It runs as the signed-in user so it can talk to
-the same Codex Desktop environment.
+the same Codex environment.
 
 Service paths:
 
@@ -187,16 +247,18 @@ The service log keeps the newest 5000 lines.
 
 Commands are registered only for authorized chats.
 
+- `/sessions [query]` opens the session browser. Dexgram lists projects first,
+  then paginated Codex threads inside the selected project. Attach one to the
+  current Telegram topic and Dexgram syncs the most recent 100 rendered history
+  messages by default.
 - `/new [title]` creates a new topic for a one-off Codex chat.
-- `/new project query: title` creates a new topic pre-bound to a matched project.
-- `/sessions [query]` browses existing Codex sessions by project and attaches
-  one to the current Telegram topic. Attaching syncs the most recent 100
-  rendered history messages by default.
+- `/new project query: title` creates a new topic already bound to a matched
+  Codex project.
 - `/side [message]` or `/btw [message]` forks the current Codex chat into a
   prefixed side topic.
   If `message` is present, Dexgram starts it in the new side topic immediately.
   The source topic must already be an active registered Codex thread.
-- `/project <project name>` binds a new topic to a Codex Desktop project before
+- `/project <project name>` binds a new topic to a Codex project before
   the first prompt. Ambiguous matches get inline selection buttons.
 - `/status` shows the topic mapping, project/cwd, and active turn state.
 - `/sync [limit]` mirrors completed Codex turns that have not been synced yet.
@@ -215,9 +277,30 @@ Commands are registered only for authorized chats.
 
 On the first prompt in a Telegram topic that has no project or Codex thread,
 Dexgram asks whether to resume an existing session, start a new chat, or set a
-project first. Once a choice creates or attaches a Codex thread, Dexgram saves
-the mapping by Telegram `chat_id` and `message_thread_id`. Later messages in
-that topic reuse the stored Codex thread.
+project first.
+
+- **Resume a session** opens the `/sessions` browser, attaches the selected
+  Codex thread to the topic, syncs recent history, then submits your waiting
+  message.
+- **Start new chat** creates a fresh Codex thread for that topic.
+- **Set project first** lets you bind the topic with `/project` before sending
+  work to Codex.
+
+Once a choice creates or attaches a Codex thread, Dexgram saves the mapping by
+Telegram `chat_id` and `message_thread_id`. Later messages in that topic reuse
+the stored Codex thread.
+
+### Existing Sessions
+
+`/sessions [query]` is the fast lane back into work you already started. Dexgram
+asks Codex for recent threads, groups them by project/cwd, and shows an inline
+project tree. Pick a project, pick a thread, and the current Telegram topic is
+attached to that Codex session.
+
+Attach sync is intentionally bounded. Dexgram mirrors up to the most recent 100
+rendered Telegram history messages so you get context without flooding the
+topic. Manual `/sync [limit]` is also bounded: one completed turn by default,
+five at most.
 
 ### Side Chats
 
@@ -264,7 +347,7 @@ prompts, and user-input prompts use normal Telegram notifications.
 If you send a message while Codex is already working in that topic, Dexgram
 queues it locally and submits it when earlier work finishes.
 
-Queued messages get two buttons:
+Queued user messages get two inline buttons:
 
 - `Steer` merges the queued input into the active Codex turn.
 - `Delete` removes it before it is submitted.
@@ -292,9 +375,12 @@ Images are sent as photos. Everything else is sent as a document.
 
 ## Limitations
 
-- Dexgram does not import arbitrary Codex Desktop chats into Telegram.
-- `/sync` only works for chats Dexgram already created and mapped.
-- Unrelated Desktop chats do not appear in Telegram.
+- Dexgram can attach existing Codex sessions exposed by Codex app-server, but it
+  does not bulk-import your entire Codex history into Telegram.
+- Attach sync is capped at the most recent 100 rendered Telegram messages.
+- Manual `/sync` is intentionally capped and truncated so one command cannot
+  flood a topic with a huge historical transcript.
+- Dexgram is Windows-only by design.
 
 ## Development
 
