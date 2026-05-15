@@ -25,67 +25,31 @@ living on your Windows machine.
 
 ## Why Dexgram Hits Different
 
-- **Native binary, tiny surface area**: install one Windows executable and run
-  it beside Codex. That is the whole stack.
-- **Topic-native Codex**: one Telegram topic maps to one Codex thread, so chats
-  stay tidy instead of melting into one long bot DM.
-- **Session teleportation**: browse existing Codex sessions by project, attach
-  one to a topic, and sync the recent history into Telegram.
-- **Real forks**: `/side` and `/btw` create native Codex thread forks in fresh
-  Telegram topics, perfect for tangents that should not derail the main run.
-- **Busy-turn ergonomics**: send messages while Codex is working, then steer or
-  delete queued user input before it is submitted.
-- **Local context**: project matching, local attachments, file links,
-  model settings, reasoning effort, goals, Plan Mode, and updates all work from
-  Telegram.
-
-## Why Telegram
-
-Remote coding tools usually make you pick a nuisance. Some need direct line of
-sight to your machine, which means VPNs, Tailscale, port forwarding, or other
-network gymnastics before your phone can reach your desktop. Some route your
-work through their own relay servers. Some try to become a whole IDE, dashboard,
-sync engine, and deployment story at once, then wobble under the weight.
-
-Dexgram takes the boring road on purpose. Telegram is already stable, fast,
-mobile-native, threaded, push-notification aware, file-friendly, and installed
-on the devices people actually carry. Dexgram only has to be the bridge between
-Telegram and Codex. Simple shape, fewer moving parts, smoother day.
-
-## Features
-
-- **Native Windows binary**: no Node module, no background web bundle, no local
-  dashboard stack. Download `dexgram.exe`, configure your bot, and go.
-- **Session browser**: `/sessions [query]` lists projects first, then paginated
-  Codex threads inside each project. Attach one to the current topic and Dexgram
-  syncs the most recent 100 rendered history messages.
-- **First-message guardrail**: a brand-new topic no longer silently becomes a
-  projectless chat. Dexgram asks whether to resume a session, start fresh, or
-  set a project first.
-- **Project-bound chats**: fuzzy-match Codex projects with `/project`,
-  or create a topic already bound to a project with `/new project query: title`.
-- **Projectless workspaces**: start quick one-off chats in dated local
-  workspaces under your Documents folder.
-- **Native side chats**: fork active Codex threads into separate Telegram topics
-  with `/side` or `/btw`, keeping the same project and cwd.
-- **Live Codex stream**: mirror assistant messages, shell/tool progress, file
-  edits, media references, final answers, approvals, and input prompts.
-- **Queue controls**: when Codex is busy, user messages queue locally with
-  inline controls on the queued user message.
-- **Manual sync with brakes**: `/sync [limit]` defaults to one completed turn,
-  caps at five, and truncates oversized historical output.
-- **Codex controls**: use `/goal`, `/plan`, `/model`, `/effort`, `/stop`, and
-  `/status` from Telegram.
-- **Attachments**: send Telegram photos and documents into Codex prompts as
-  local files.
-- **Optional file upload-back**: final answers can upload explicitly linked
-  local files to Telegram when enabled.
-- **Safe onboarding**: authorize Telegram chats through config or short-lived
-  pairing codes. Unauthorized chats never reach Codex.
-- **Hot reload**: config changes reload live, including chat IDs, Codex
-  settings, and bot token rotation.
-- **Windows login task**: run Dexgram in the background as your signed-in user,
-  with a Startup-folder fallback.
+- **One native binary**: no Node runtime, no npm install, no local dashboard
+  stack. Download `dexgram.exe`, configure your bot, and run it beside Codex.
+- **Telegram is the interface**: stable push notifications, threaded chats,
+  groups, DMs, search, files, photos, and mobile apps are already there.
+  Dexgram only has to be the bridge.
+- **No network gymnastics**: remote coding tools often make you care about
+  line of sight, VPNs, Tailscale, port forwarding, relay servers, or a big
+  custom dashboard. Telegram already solved reliable mobile messaging.
+- **Still useful after Codex mobile**: Codex is now in preview inside the
+  ChatGPT mobile app, but it still depends on connected hosts and early reports
+  make the experience sound rough around the edges. Dexgram stays deliberately
+  simple: Telegram topic in, Codex session out.
+- **Topic-native Codex**: one Telegram topic maps to one Codex thread, with
+  `/sessions [query]` for attaching existing sessions, `/new` for fresh chats,
+  `/project` for project-bound work, and `/sync [limit]` for bounded history
+  sync.
+- **Real side quests**: `/side` and `/btw` create native Codex thread forks in
+  fresh Telegram topics, keeping the same project and cwd while the tangent runs
+  independently.
+- **Live, controllable runs**: Telegram mirrors assistant text, run logs, tool
+  activity, file edits, final answers, approvals, and input prompts. Messages
+  sent while Codex is busy queue locally with steer/delete controls.
+- **Local context without drama**: attachments, local file links, goals, Plan
+  Mode, model selection, reasoning effort, hot reload, pairing codes, and the
+  Windows login task all stay inside the small bridge.
 
 ## Windows Only
 
