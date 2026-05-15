@@ -141,6 +141,12 @@ Dexgram is intentionally Windows-specific:
   reconnect with the new token.
 - Manual `/sync [limit]` mirrors unsynced completed turns, defaults to one turn,
   caps at five turns, and truncates oversized historical output.
+- Telegram-origin prompts are also inserted into Codex session JSONL as passive
+  `Telegram: ...` transcript entries when a safe completed-turn boundary exists.
+  These records use normal Codex `response_item message/user` plus `event_msg
+  user_message` shapes and include a top-level `dexgram` metadata object. Codex
+  Desktop renders these only after the thread/session is reloaded, not as a live
+  UI update.
 
 Avoid replacing this Windows behavior with cross-platform assumptions unless
 the user explicitly asks for that.

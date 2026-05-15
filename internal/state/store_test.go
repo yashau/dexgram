@@ -247,6 +247,38 @@ func TestStoreTelegramPairingCodeConsumesOnce(t *testing.T) {
 	}
 }
 
+func TestStoreTelegramTranscriptSyncMarker(t *testing.T) {
+	store := openTestStore(t)
+	defer closeTestStore(t, store)
+	synced, err := store.HasTelegramTranscriptSync(123, 7, 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if synced {
+		t.Fatal("unexpected transcript sync marker")
+	}
+	if err := store.SaveTelegramTranscriptSync(123, 7, 42, "thread-a"); err != nil {
+		t.Fatal(err)
+	}
+	synced, err = store.HasTelegramTranscriptSync(123, 7, 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !synced {
+		t.Fatal("missing transcript sync marker")
+	}
+	if err := store.SaveTelegramTranscriptSync(123, 7, 42, "thread-b"); err != nil {
+		t.Fatal(err)
+	}
+	synced, err = store.HasTelegramTranscriptSync(123, 7, 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !synced {
+		t.Fatal("missing transcript sync marker after upsert")
+	}
+}
+
 func TestStoreTelegramPairingCodeExpires(t *testing.T) {
 	store := openTestStore(t)
 	defer closeTestStore(t, store)

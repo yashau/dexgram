@@ -39,8 +39,8 @@ living on your Windows machine.
   simple: Telegram topic in, Codex session out.
 - **Topic-native Codex**: one Telegram topic maps to one Codex thread, with
   `/sessions [query]` for attaching existing sessions, `/new` for fresh chats,
-  `/project` for project-bound work, and `/sync [limit]` for bounded history
-  sync.
+  `/project` for project-bound work, `/sync [limit]` for bounded history sync,
+  and two-way transcript mirroring between Telegram and Codex Desktop.
 - **Real side quests**: `/side` and `/btw` create native Codex thread forks in
   fresh Telegram topics, keeping the same project and cwd while the tangent runs
   independently.
@@ -215,7 +215,7 @@ Commands are registered only for authorized chats.
   then paginated Codex threads inside the selected project. Attach one to the
   current Telegram topic and Dexgram syncs the most recent 25 rendered history
   messages by default. New completed Desktop replies after attach are mirrored
-  into the topic.
+  into the topic with the Desktop prompt quoted before the reply.
 - `/new [title]` creates a new topic for a one-off Codex chat.
 - `/new project query: title` creates a new topic already bound to a matched
   Codex project.
@@ -268,6 +268,16 @@ topic. After attach, Dexgram watches Codex's session JSONL file and mirrors new
 completed Desktop turns after the saved sync marker. Mirrored Desktop replies
 include the Desktop prompt as a Markdown quote before the answer. Manual
 `/sync [limit]` is also bounded: one completed turn by default, five at most.
+
+Dexgram also mirrors Telegram prompts back into the Codex Desktop transcript.
+When a Telegram message is sent into an existing Codex thread after at least one
+completed turn, Dexgram writes a passive `Telegram: ...` transcript entry into
+Codex's session JSONL just before starting the Codex turn. These entries are
+tagged with a top-level `dexgram` metadata object for debugging and duplicate
+tracking, and Dexgram filters `Telegram:` transcript entries out of
+Desktop-to-Telegram mirroring to avoid feedback loops. Codex Desktop does not
+hot-reload these inserted transcript entries; restart or reload Codex Desktop to
+see Telegram-origin messages appear in the desktop chat.
 
 ### Side Chats
 
@@ -345,7 +355,11 @@ Images are sent as photos. Everything else is sent as a document.
 - Dexgram can attach existing Codex sessions exposed by Codex app-server, but it
   does not bulk-import your entire Codex history into Telegram.
 - Attach sync is capped at the most recent 25 rendered Telegram messages. New
-  completed Desktop replies after attach are mirrored into the attached topic.
+  completed Desktop replies after attach are mirrored into the attached topic,
+  with the Desktop prompt quoted above the reply.
+- Telegram prompts are appended into Codex's session JSONL as `Telegram: ...`
+  transcript entries, but Codex Desktop shows them only after the desktop thread
+  is reloaded or Codex is restarted.
 - Manual `/sync` is intentionally capped and truncated so one command cannot
   flood a topic with a huge historical transcript.
 - Dexgram is Windows-only by design.

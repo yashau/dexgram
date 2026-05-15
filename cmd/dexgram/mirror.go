@@ -225,6 +225,10 @@ func (a *app) mirrorCompletedDesktopTurns(ctx context.Context, c *codex.Client, 
 		return conv, nil
 	}
 	for _, turn := range turns {
+		if turnHasTelegramTranscriptPrompt(turn) {
+			conv.LastSyncedTurnID = turn.ID
+			continue
+		}
 		renderHistoricalTurnWithPrompt(ctx, a.bot, conv.ChatID, conv.MessageThreadID, turn, turnUserPrompt(turn))
 		conv.LastSyncedTurnID = turn.ID
 	}

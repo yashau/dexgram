@@ -1,5 +1,7 @@
 github.com/BurntSushi/toml v1.6.0 h1:dRaEfpa2VI55EwlIW72hMRHdWouJeRF7TPYhI+AUQjk=
 github.com/BurntSushi/toml v1.6.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
+github.com/atij/jsonl v0.0.0-20240619063340-b982e4c4293d h1:xfZAWZvS3hm9KReNazT7mRMPqQOkSkgzE3cW2RVJBAw=
+github.com/atij/jsonl v0.0.0-20240619063340-b982e4c4293d/go.mod h1:4S4wwaLoPj93mqhJ5MWobOxh/CdsnwdPs/WKJNmcYH0=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
 github.com/eekstunt/telegramify-markdown-go v0.2.0 h1:12NErifwcZWTbNySPAX/cS4OZTcYGDSL5610jJJfzlU=

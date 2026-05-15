@@ -503,6 +503,7 @@ func (a *app) startNextQueuedTurn(ctx context.Context, key string, session *acti
 			}
 			continue
 		}
+		a.syncTelegramPromptTranscript(queued.ChatID, queued.MessageThreadID, queued.SourceMessageID, session.threadID, queued.Text)
 		turnID, err := startTurn(ctx, session.client, session.threadID, queued.Input, opts)
 		if err != nil {
 			log.Printf("codex queued turn start failed: %v", err)

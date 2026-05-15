@@ -96,6 +96,10 @@ func (a *app) handleSyncCommand(ctx context.Context, b *bot.Bot, msg *models.Mes
 		turns = turns[len(turns)-limit:]
 	}
 	for _, turn := range turns {
+		if turnHasTelegramTranscriptPrompt(turn) {
+			conv.LastSyncedTurnID = turn.ID
+			continue
+		}
 		renderHistoricalTurn(ctx, b, msg.Chat.ID, msg.MessageThreadID, turn)
 		conv.LastSyncedTurnID = turn.ID
 	}
@@ -203,6 +207,10 @@ func (a *app) syncRecentAttachedHistory(ctx context.Context, b *bot.Bot, conv *s
 	turns := recentCompletedTurnsByMessageBudget(thread.Turns, attachSyncMessages)
 	log.Printf("attach sync thread_id=%s turns=%d selected=%d", conv.CodexThreadID, len(thread.Turns), len(turns))
 	for _, turn := range turns {
+		if turnHasTelegramTranscriptPrompt(turn) {
+			conv.LastSyncedTurnID = turn.ID
+			continue
+		}
 		renderHistoricalTurn(ctx, b, conv.ChatID, conv.MessageThreadID, turn)
 		conv.LastSyncedTurnID = turn.ID
 	}
@@ -334,6 +342,46 @@ func turnUserPrompt(turn codex.Turn) string {
 		}
 	}
 	return strings.Join(prompts, "\n\n")
+}
+
+func turnHasTelegramTranscriptPrompt(turn codex.Turn) bool {
+	for _, item := range turn.Items {
+		if item.Type != "userMessage" {
+			continue
+		}
+		for _, text := range itemTextParts(item) {
+			if isTelegramTranscriptPrompt(text) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func itemTextParts(item codex.ThreadItem) []string {
+	var parts []string
+	if text := strings.TrimSpace(item.Text); text != "" {
+		parts = append(parts, text)
+	}
+	var content []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if len(item.Content) == 0 || json.Unmarshal(item.Content, &content) != nil {
+		return parts
+	}
+	for _, part := range content {
+		if part.Type == "text" || part.Type == "input_text" {
+			if text := strings.TrimSpace(part.Text); text != "" {
+				parts = append(parts, text)
+			}
+		}
+	}
+	return parts
+}
+
+func isTelegramTranscriptPrompt(text string) bool {
+	return strings.HasPrefix(strings.TrimSpace(text), telegramTranscriptPrefix)
 }
 
 func prefixQuotedPrompt(prompt, body string) string {

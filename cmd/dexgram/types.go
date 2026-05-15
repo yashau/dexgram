@@ -22,6 +22,7 @@ type app struct {
 	configState           configFileState
 	logPath               string
 	mu                    sync.Mutex
+	transcriptMu          sync.Mutex
 	projectsMu            sync.RWMutex
 	active                map[string]*activeTurn
 	actions               map[string]turnAction
@@ -59,6 +60,7 @@ type telegramTurn struct {
 	Queued            bool
 	ChatID            int64
 	MessageThreadID   int
+	SourceMessageID   int
 	StatusMessageID   int
 	Text              string
 	Input             []map[string]any

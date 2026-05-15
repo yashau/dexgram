@@ -125,6 +125,15 @@ CREATE TABLE IF NOT EXISTS telegram_pairing_codes (
   chat_id INTEGER NOT NULL,
   expires_at TEXT NOT NULL,
   created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS telegram_transcript_syncs (
+  chat_id INTEGER NOT NULL,
+  message_thread_id INTEGER NOT NULL,
+  message_id INTEGER NOT NULL,
+  codex_thread_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (chat_id, message_thread_id, message_id)
 );`)
 	if err != nil {
 		return err
@@ -321,6 +330,36 @@ ON CONFLICT(key) DO UPDATE SET
   updated_at = excluded.updated_at`,
 		key,
 		value,
+		time.Now().UTC().Format(time.RFC3339),
+	)
+	return err
+}
+
+func (s *Store) HasTelegramTranscriptSync(chatID int64, messageThreadID, messageID int) (bool, error) {
+	row := s.db.QueryRow(`
+SELECT 1 FROM telegram_transcript_syncs
+WHERE chat_id = ? AND message_thread_id = ? AND message_id = ?`, chatID, messageThreadID, messageID)
+	var one int
+	if err := row.Scan(&one); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *Store) SaveTelegramTranscriptSync(chatID int64, messageThreadID, messageID int, codexThreadID string) error {
+	_, err := s.db.Exec(`
+INSERT INTO telegram_transcript_syncs (
+  chat_id, message_thread_id, message_id, codex_thread_id, created_at
+) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT(chat_id, message_thread_id, message_id) DO UPDATE SET
+  codex_thread_id = excluded.codex_thread_id`,
+		chatID,
+		messageThreadID,
+		messageID,
+		codexThreadID,
 		time.Now().UTC().Format(time.RFC3339),
 	)
 	return err
