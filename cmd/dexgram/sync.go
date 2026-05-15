@@ -67,17 +67,26 @@ func (a *app) handleSyncCommand(ctx context.Context, b *bot.Bot, msg *models.Mes
 			log.Printf("codex app-server: %v", err)
 		}
 	}()
-	if err := a.resumeCodexThread(ctx, c, conv.CodexThreadID); err != nil {
+	resume, err := a.resumeCodexThreadResult(ctx, c, conv.CodexThreadID)
+	if err != nil {
 		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{ChatID: msg.Chat.ID, MessageThreadID: msg.MessageThreadID, Text: "Could not resume Codex thread: " + err.Error()})
 		return
 	}
-	var read codex.ThreadReadResponse
-	if err := c.Call(ctx, "thread/read", map[string]any{"threadId": conv.CodexThreadID}, &read); err != nil {
-		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{ChatID: msg.Chat.ID, MessageThreadID: msg.MessageThreadID, Text: "Could not read Codex thread: " + err.Error()})
+	thread := resume.Thread
+	if len(thread.Turns) == 0 {
+		var read codex.ThreadReadResponse
+		if err := c.Call(ctx, "thread/read", map[string]any{"threadId": conv.CodexThreadID}, &read); err != nil {
+			_, _ = b.SendMessage(ctx, &bot.SendMessageParams{ChatID: msg.Chat.ID, MessageThreadID: msg.MessageThreadID, Text: "Could not read Codex thread: " + err.Error()})
+			return
+		}
+		thread = read.Thread
+	}
+	if len(thread.Turns) == 0 {
+		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{ChatID: msg.Chat.ID, MessageThreadID: msg.MessageThreadID, Text: "No completed Codex turns to sync."})
 		return
 	}
 
-	turns := unsyncedTurns(read.Thread.Turns, conv.LastSyncedTurnID)
+	turns := unsyncedTurns(thread.Turns, conv.LastSyncedTurnID)
 	if len(turns) == 0 {
 		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{ChatID: msg.Chat.ID, MessageThreadID: msg.MessageThreadID, Text: "Already synced."})
 		return
@@ -173,14 +182,20 @@ func (a *app) syncRecentAttachedHistory(ctx context.Context, b *bot.Bot, conv *s
 			log.Printf("codex app-server: %v", err)
 		}
 	}()
-	if err := a.resumeCodexThread(ctx, c, conv.CodexThreadID); err != nil {
+	resume, err := a.resumeCodexThreadResult(ctx, c, conv.CodexThreadID)
+	if err != nil {
 		return err
 	}
-	var read codex.ThreadReadResponse
-	if err := c.Call(ctx, "thread/read", map[string]any{"threadId": conv.CodexThreadID}, &read); err != nil {
-		return err
+	thread := resume.Thread
+	if len(thread.Turns) == 0 {
+		var read codex.ThreadReadResponse
+		if err := c.Call(ctx, "thread/read", map[string]any{"threadId": conv.CodexThreadID}, &read); err != nil {
+			return err
+		}
+		thread = read.Thread
 	}
-	turns := recentCompletedTurnsByMessageBudget(read.Thread.Turns, attachSyncMessages)
+	turns := recentCompletedTurnsByMessageBudget(thread.Turns, attachSyncMessages)
+	log.Printf("attach sync thread_id=%s turns=%d selected=%d", conv.CodexThreadID, len(thread.Turns), len(turns))
 	for _, turn := range turns {
 		renderHistoricalTurn(ctx, b, conv.ChatID, conv.MessageThreadID, turn)
 		conv.LastSyncedTurnID = turn.ID

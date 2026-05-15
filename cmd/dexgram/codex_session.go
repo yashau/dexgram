@@ -139,12 +139,18 @@ func (a *app) startCodexThread(ctx context.Context, c *codex.Client, conv state.
 }
 
 func (a *app) resumeCodexThread(ctx context.Context, c *codex.Client, threadID string) error {
+	_, err := a.resumeCodexThreadResult(ctx, c, threadID)
+	return err
+}
+
+func (a *app) resumeCodexThreadResult(ctx context.Context, c *codex.Client, threadID string) (codex.ThreadResumeResponse, error) {
 	var out codex.ThreadResumeResponse
-	return c.Call(ctx, "thread/resume", map[string]any{
+	err := c.Call(ctx, "thread/resume", map[string]any{
 		"threadId":       threadID,
 		"approvalPolicy": a.cfg.Codex.ApprovalPolicy,
 		"sandbox":        a.cfg.Codex.Sandbox,
 	}, &out)
+	return out, err
 }
 
 func (a *app) forkTopicThread(ctx context.Context, chatID int64, messageThreadID int, conv state.Conversation) (string, string, error) {
