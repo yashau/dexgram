@@ -109,6 +109,14 @@ func TestPrefixQuotedPrompt(t *testing.T) {
 	}
 }
 
+func TestStripAssistantAppDirectives(t *testing.T) {
+	got := stripAssistantAppDirectives("Done.\n\n::git-stage{cwd=\"C:\\\\work\"}\n  ::archive{reason=\"done\"}\n\nStill visible.")
+	want := "Done.\n\n\nStill visible."
+	if got != want {
+		t.Fatalf("stripAssistantAppDirectives = %q, want %q", got, want)
+	}
+}
+
 func TestRenderHistoricalTurnQuotesUserPrompt(t *testing.T) {
 	b, api := newTelegramTestBot(t)
 	phase := "final_answer"
@@ -126,6 +134,26 @@ func TestRenderHistoricalTurnQuotesUserPrompt(t *testing.T) {
 	}
 	if !api.bodyContains("sendMessage", "blockquote") {
 		t.Fatalf("historical turn did not send blockquote entity: %#v", api.calls)
+	}
+}
+
+func TestRenderHistoricalTurnStripsAppDirectives(t *testing.T) {
+	b, api := newTelegramTestBot(t)
+	phase := "final_answer"
+	turn := codex.Turn{ID: "t1", Status: "completed", Items: []codex.ThreadItem{
+		{Type: "userMessage", Content: []byte(`[{"type":"text","text":"Desktop prompt","text_elements":[]}]`)},
+		{Type: "agentMessage", Phase: &phase, Text: "Done.\n\n::git-stage{cwd=\"C:\\\\work\"}\n::git-push{cwd=\"C:\\\\work\" branch=\"main\"}"},
+	}}
+
+	if err := renderHistoricalTurn(context.Background(), b, 123, 7, turn); err != nil {
+		t.Fatal(err)
+	}
+
+	if !api.bodyContains("sendMessage", "Done.") {
+		t.Fatalf("historical turn did not include final answer: %#v", api.calls)
+	}
+	if api.bodyContains("sendMessage", "::git-stage") || api.bodyContains("sendMessage", "::git-push") {
+		t.Fatalf("historical turn included app directive: %#v", api.calls)
 	}
 }
 

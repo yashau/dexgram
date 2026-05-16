@@ -157,7 +157,7 @@ func renderHistoricalTurnSilent(ctx context.Context, b *bot.Bot, chatID int64, m
 
 func renderHistoricalTurnNotify(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, turn codex.Turn, prompt string, notify bool) error {
 	_, _, final := summarizeTurn(turn)
-	final = truncateSyncText(final)
+	final = truncateSyncText(stripAssistantAppDirectives(final))
 	if strings.TrimSpace(final) != "" {
 		final = prefixQuotedPrompt(prompt, final)
 		return sendRichMessageNotify(ctx, b, chatID, messageThreadID, final, notify)
@@ -265,6 +265,18 @@ func truncateSyncText(text string) string {
 		return string(runes)
 	}
 	return string(runes[:maxSyncTextRunes]) + "\n\n... truncated by /sync limit"
+}
+
+func stripAssistantAppDirectives(text string) string {
+	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "::") {
+			continue
+		}
+		out = append(out, line)
+	}
+	return strings.TrimSpace(strings.Join(out, "\n"))
 }
 
 func summarizeTurn(turn codex.Turn) (string, []string, string) {

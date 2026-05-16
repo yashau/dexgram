@@ -679,6 +679,7 @@ func (a *app) handleTopicSessionEvent(ctx context.Context, key string, session *
 		if answer == "" {
 			answer = strings.TrimSpace(tgTurn.LastAgent)
 		}
+		answer = stripAssistantAppDirectives(answer)
 		if answer == "" {
 			answer = "Codex completed without a final text answer."
 		}
