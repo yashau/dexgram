@@ -831,10 +831,10 @@ func (a *app) handleTopicSessionEvent(ctx context.Context, key string, session *
 		if tgTurn.Initial != nil && sameTelegramText(tgTurn.Initial.text, answer) {
 			tgTurn.Initial.delete()
 		}
-		replyText := prefixQuotedPrompt(tgTurn.Text, answer)
+		replyText := answer
 		sentAsNew := false
 		finalTextDelivered := false
-		if err := sendRichMessage(ctx, a.bot, tgTurn.ChatID, tgTurn.MessageThreadID, replyText); err != nil {
+		if err := sendRichMessageReply(ctx, a.bot, tgTurn.ChatID, tgTurn.MessageThreadID, tgTurn.SourceMessageID, replyText); err != nil {
 			log.Printf("send final message: %v", err)
 			if tgTurn.StatusMessageID != 0 {
 				if editErr := editRichMessage(ctx, a.bot, tgTurn.ChatID, tgTurn.StatusMessageID, replyText); editErr != nil {

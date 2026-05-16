@@ -148,11 +148,11 @@ func unsyncedTurns(turns []codex.Turn, lastID string) []codex.Turn {
 }
 
 func renderHistoricalTurn(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, turn codex.Turn) error {
-	return renderHistoricalTurnNotify(ctx, b, chatID, messageThreadID, turn, turnUserPrompt(turn), true)
+	return renderHistoricalTurnNotify(ctx, b, chatID, messageThreadID, turn, turnDesktopPrompt(turn), true)
 }
 
 func renderHistoricalTurnSilent(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, turn codex.Turn) error {
-	return renderHistoricalTurnNotify(ctx, b, chatID, messageThreadID, turn, turnUserPrompt(turn), false)
+	return renderHistoricalTurnNotify(ctx, b, chatID, messageThreadID, turn, turnDesktopPrompt(turn), false)
 }
 
 func renderHistoricalTurnNotify(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, turn codex.Turn, prompt string, notify bool) error {
@@ -349,6 +349,13 @@ func turnHasTelegramTranscriptPrompt(turn codex.Turn) bool {
 		}
 	}
 	return false
+}
+
+func turnDesktopPrompt(turn codex.Turn) string {
+	if turnHasTelegramTranscriptPrompt(turn) {
+		return ""
+	}
+	return turnUserPrompt(turn)
 }
 
 func itemTextParts(item codex.ThreadItem) []string {

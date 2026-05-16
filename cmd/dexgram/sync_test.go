@@ -101,6 +101,16 @@ func TestTurnHasTelegramTranscriptPromptIgnoresNonTelegramPrefix(t *testing.T) {
 	}
 }
 
+func TestTurnDesktopPromptSuppressesTelegramTranscript(t *testing.T) {
+	turn := codex.Turn{Items: []codex.ThreadItem{
+		{Type: "userMessage", Content: []byte(`[{"type":"text","text":"Telegram: hello from chat\n","text_elements":[]}]`)},
+		{Type: "agentMessage", Text: "answer"},
+	}}
+	if got := turnDesktopPrompt(turn); got != "" {
+		t.Fatalf("turnDesktopPrompt = %q, want empty", got)
+	}
+}
+
 func TestPrefixQuotedPrompt(t *testing.T) {
 	got := prefixQuotedPrompt("First line\n\nSecond line", "Answer")
 	want := "> First line\n>\n> Second line\n\nAnswer"

@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
+	"dexgram/internal/codex"
 	"dexgram/internal/state"
 )
 
@@ -110,6 +113,57 @@ func TestTelegramPromptInputDoesNotDoublePrefix(t *testing.T) {
 	got := telegramPromptInput(textInput("Telegram: hello"))
 	if got[0]["text"] != "Telegram: hello" {
 		t.Fatalf("telegramPromptInput text = %q", got[0]["text"])
+	}
+}
+
+func TestTelegramStartedFinalAnswerDoesNotQuotePrompt(t *testing.T) {
+	b, api := newTelegramTestBot(t)
+	app := newHandlerTestApp(t, []int64{123})
+	app.bot = b
+	key := "123:7"
+	session := &activeTurn{
+		conv: state.Conversation{
+			ChatID:          123,
+			MessageThreadID: 7,
+			CodexThreadID:   "thread-1",
+			TopicNamed:      true,
+		},
+		turns: map[string]*telegramTurn{},
+	}
+	if !app.registerSession(key, session) {
+		t.Fatal("register session")
+	}
+	app.addSessionTurn(key, &telegramTurn{
+		TurnID:          "turn-1",
+		ChatID:          123,
+		MessageThreadID: 7,
+		SourceMessageID: 55,
+		Text:            "Telegram prompt",
+		FinalAnswer:     "Final answer",
+		Buffers:         map[string]string{},
+		SentFiles:       map[string]bool{},
+	})
+
+	params, err := json.Marshal(codex.TurnCompletedNotification{
+		ThreadID: "thread-1",
+		Turn:     codex.Turn{ID: "turn-1", Status: "completed"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.handleTopicSessionEvent(context.Background(), key, session, codex.Event{
+		Method: "turn/completed",
+		Params: params,
+	})
+
+	if !api.bodyContains("sendMessage", "Final answer") {
+		t.Fatalf("final answer was not sent: %#v", api.calls)
+	}
+	if api.bodyContains("sendMessage", "Telegram prompt") || api.bodyContains("sendMessage", "blockquote") {
+		t.Fatalf("telegram-origin final answer quoted prompt: %#v", api.calls)
+	}
+	if !api.bodyContains("sendMessage", "reply_parameters") || !api.bodyContains("sendMessage", "55") {
+		t.Fatalf("telegram-origin final answer did not reply to source message: %#v", api.calls)
 	}
 }
 

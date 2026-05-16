@@ -21,11 +21,23 @@ const (
 	runLogMinInterval = 2 * time.Second
 )
 
-func sendRichMessage(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, text string) error {
-	return sendRichMessageNotify(ctx, b, chatID, messageThreadID, text, true)
+func sendRichMessageNotify(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, text string, notify bool) error {
+	return sendRichMessageNotifyReply(ctx, b, chatID, messageThreadID, text, notify, nil)
 }
 
-func sendRichMessageNotify(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, text string, notify bool) error {
+func sendRichMessageReply(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, replyMessageID int, text string) error {
+	var reply *models.ReplyParameters
+	if replyMessageID != 0 {
+		reply = &models.ReplyParameters{
+			MessageID:                replyMessageID,
+			ChatID:                   chatID,
+			AllowSendingWithoutReply: true,
+		}
+	}
+	return sendRichMessageNotifyReply(ctx, b, chatID, messageThreadID, text, true, reply)
+}
+
+func sendRichMessageNotifyReply(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, text string, notify bool, reply *models.ReplyParameters) error {
 	for _, message := range renderTelegramMessages(text, 3200) {
 		if err := waitTelegramQueue(ctx, "send rich message", chatID, messageThreadID); err != nil {
 			return err
@@ -35,6 +47,7 @@ func sendRichMessageNotify(ctx context.Context, b *bot.Bot, chatID int64, messag
 			MessageThreadID:     messageThreadID,
 			Text:                message.Text,
 			Entities:            message.Entities,
+			ReplyParameters:     reply,
 			DisableNotification: !notify,
 		})
 		if err != nil {
@@ -48,6 +61,7 @@ func sendRichMessageNotify(ctx context.Context, b *bot.Bot, chatID int64, messag
 				ChatID:              chatID,
 				MessageThreadID:     messageThreadID,
 				Text:                message.Text,
+				ReplyParameters:     reply,
 				DisableNotification: !notify,
 			})
 			if fallbackErr != nil {
