@@ -457,12 +457,132 @@ func (a *app) setTopicGoal(ctx context.Context, chatID int64, messageThreadID in
 	return setThreadGoal(ctx, c, conv.CodexThreadID, objective)
 }
 
+func (a *app) clearTopicGoal(ctx context.Context, chatID int64, messageThreadID int) error {
+	return a.withExistingTopicCodexClient(ctx, chatID, messageThreadID, func(c *codex.Client, threadID string) error {
+		return clearThreadGoal(ctx, c, threadID)
+	})
+}
+
+func (a *app) getTopicGoal(ctx context.Context, chatID int64, messageThreadID int) (*codex.ThreadGoal, error) {
+	var goal *codex.ThreadGoal
+	err := a.withExistingTopicCodexClient(ctx, chatID, messageThreadID, func(c *codex.Client, threadID string) error {
+		var err error
+		goal, err = getThreadGoal(ctx, c, threadID)
+		return err
+	})
+	return goal, err
+}
+
+func (a *app) pauseTopicGoal(ctx context.Context, chatID int64, messageThreadID int) (string, error) {
+	var objective string
+	err := a.withExistingTopicCodexClient(ctx, chatID, messageThreadID, func(c *codex.Client, threadID string) error {
+		goal, err := getThreadGoal(ctx, c, threadID)
+		if err != nil {
+			return err
+		}
+		if goal == nil || strings.TrimSpace(goal.Objective) == "" {
+			return fmt.Errorf("no Codex goal is set for this thread")
+		}
+		objective = strings.TrimSpace(goal.Objective)
+		if err := a.store.SavePausedGoal(threadID, objective); err != nil {
+			return err
+		}
+		return clearThreadGoal(ctx, c, threadID)
+	})
+	return objective, err
+}
+
+func (a *app) resumeTopicGoal(ctx context.Context, chatID int64, messageThreadID int) (string, error) {
+	var objective string
+	err := a.withExistingTopicCodexClient(ctx, chatID, messageThreadID, func(c *codex.Client, threadID string) error {
+		paused, ok, err := a.store.GetPausedGoal(threadID)
+		if err != nil {
+			return err
+		}
+		if !ok || strings.TrimSpace(paused.Objective) == "" {
+			return fmt.Errorf("no paused Codex goal is stored for this thread")
+		}
+		objective = strings.TrimSpace(paused.Objective)
+		if err := setThreadGoal(ctx, c, threadID, objective); err != nil {
+			return err
+		}
+		return a.store.DeletePausedGoal(threadID)
+	})
+	return objective, err
+}
+
+func (a *app) withExistingTopicCodexClient(ctx context.Context, chatID int64, messageThreadID int, fn func(*codex.Client, string) error) error {
+	key := fmt.Sprintf("%d:%d", chatID, messageThreadID)
+	if session := a.activeSession(key); session != nil {
+		return fn(session.client, session.threadID)
+	}
+
+	conv, ok, err := a.store.Get(chatID, messageThreadID)
+	if err != nil {
+		return err
+	}
+	if !ok || conv.CodexThreadID == "" {
+		return fmt.Errorf("this Telegram topic has not started a Codex thread yet")
+	}
+
+	c, err := codex.StartStdioWithOptions(ctx, codex.StartOptions{
+		CLIPath:    a.cfg.Codex.CLIPath,
+		WorkingDir: appServerWorkingDir(conv),
+	})
+	if err != nil {
+		return err
+	}
+	done := make(chan struct{})
+	defer close(done)
+	defer func() {
+		_ = c.Close()
+	}()
+	errs := c.Errors()
+	go func() {
+		for {
+			select {
+			case err, ok := <-errs:
+				if !ok {
+					return
+				}
+				log.Printf("codex app-server: %v", err)
+			case <-done:
+				return
+			}
+		}
+	}()
+	c.SetServerRequestHandler(func(_ context.Context, req codex.ServerRequest) (any, error) {
+		return a.requestApproval(ctx, chatID, messageThreadID, req)
+	})
+	if err := a.resumeCodexThread(ctx, c, conv.CodexThreadID); err != nil {
+		return err
+	}
+	return fn(c, conv.CodexThreadID)
+}
+
 func setThreadGoal(ctx context.Context, c *codex.Client, threadID, objective string) error {
 	var out map[string]any
 	return c.Call(ctx, "thread/goal/set", map[string]any{
 		"threadId":  threadID,
 		"objective": objective,
 	}, &out)
+}
+
+func clearThreadGoal(ctx context.Context, c *codex.Client, threadID string) error {
+	var out map[string]any
+	return c.Call(ctx, "thread/goal/clear", map[string]any{
+		"threadId": threadID,
+	}, &out)
+}
+
+func getThreadGoal(ctx context.Context, c *codex.Client, threadID string) (*codex.ThreadGoal, error) {
+	var out codex.ThreadGoalGetResponse
+	if err := c.Call(ctx, "thread/goal/get", map[string]any{
+		"threadId": threadID,
+	}, &out); err != nil {
+		return nil, err
+	}
+	return out.Goal, nil
 }
 
 func textInput(prompt string) []map[string]any {

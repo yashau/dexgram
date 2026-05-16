@@ -136,6 +136,9 @@ Telegram Commands
   /status
       Show this topic's Dexgram mapping, project/cwd, and active turn state.
 
+  /usage
+      Show Codex 5-hour and weekly usage limits.
+
   /sync [limit]
       Manually mirror completed Codex turns that are not yet marked as synced
       for this Telegram topic. Defaults to 1 turn and caps at 5.
@@ -145,6 +148,20 @@ Telegram Commands
 
   /goal <objective>
       Set the native Codex goal for this Telegram topic.
+
+  /goal
+  /goal status
+      Show the current Codex goal for this Telegram topic.
+
+  /goal clear
+      Clear the current Codex goal without storing it. Aliases: delete, remove,
+      stop, off, none.
+
+  /goal pause
+      Store this Codex thread's current goal in Dexgram, then clear it in Codex.
+
+  /goal resume
+      Restore the paused goal stored for this Codex thread.
 
   /plan <message>
       Start a true Codex Plan Mode turn in this Telegram topic.

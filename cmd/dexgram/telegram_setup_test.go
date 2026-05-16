@@ -9,12 +9,12 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
-func TestTelegramCommandsIncludeUpdateSideAndBTW(t *testing.T) {
+func TestTelegramCommandsIncludeUpdateSideBTWAndUsage(t *testing.T) {
 	found := map[string]bool{}
 	for _, command := range telegramCommands() {
 		found[command.Command] = true
 	}
-	for _, command := range []string{"update", "side", "btw"} {
+	for _, command := range []string{"update", "side", "btw", "usage"} {
 		if !found[command] {
 			t.Fatalf("expected /%s command to be registered", command)
 		}

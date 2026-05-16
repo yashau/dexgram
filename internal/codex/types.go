@@ -35,12 +35,47 @@ type ThreadForkResponse struct {
 	Cwd    string `json:"cwd"`
 }
 
+type ThreadGoalGetResponse struct {
+	Goal *ThreadGoal `json:"goal"`
+}
+
+type ThreadGoal struct {
+	ThreadID        string   `json:"threadId"`
+	Objective       string   `json:"objective"`
+	Status          string   `json:"status"`
+	TokenBudget     *float64 `json:"tokenBudget"`
+	TokensUsed      float64  `json:"tokensUsed"`
+	TimeUsedSeconds float64  `json:"timeUsedSeconds"`
+	CreatedAt       float64  `json:"createdAt"`
+	UpdatedAt       float64  `json:"updatedAt"`
+}
+
 type TurnStartResponse struct {
 	Turn Turn `json:"turn"`
 }
 
 type ModelListResponse struct {
 	Data []ModelOption `json:"data"`
+}
+
+type AccountRateLimitsResponse struct {
+	RateLimits          RateLimitSnapshot             `json:"rateLimits"`
+	RateLimitsByLimitID map[string]*RateLimitSnapshot `json:"rateLimitsByLimitId"`
+}
+
+type RateLimitSnapshot struct {
+	LimitID              string           `json:"limitId"`
+	LimitName            string           `json:"limitName"`
+	Primary              *RateLimitWindow `json:"primary"`
+	Secondary            *RateLimitWindow `json:"secondary"`
+	PlanType             string           `json:"planType"`
+	RateLimitReachedType string           `json:"rateLimitReachedType"`
+}
+
+type RateLimitWindow struct {
+	UsedPercent        float64  `json:"usedPercent"`
+	WindowDurationMins *float64 `json:"windowDurationMins"`
+	ResetsAt           *float64 `json:"resetsAt"`
 }
 
 type ModelOption struct {

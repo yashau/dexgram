@@ -336,6 +336,62 @@ func TestStoreTelegramTurnMarker(t *testing.T) {
 	}
 }
 
+func TestStorePausedGoalsAreKeyedByCodexThread(t *testing.T) {
+	store := openTestStore(t)
+	defer closeTestStore(t, store)
+
+	if _, ok, err := store.GetPausedGoal("thread-a"); err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Fatal("unexpected paused goal")
+	}
+
+	if err := store.SavePausedGoal("thread-a", "Finish Dexgram usage"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SavePausedGoal("thread-b", "Other goal"); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := store.GetPausedGoal("thread-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected paused goal")
+	}
+	if got.CodexThreadID != "thread-a" || got.Objective != "Finish Dexgram usage" {
+		t.Fatalf("paused goal = %#v", got)
+	}
+	if got.CreatedAt == "" || got.UpdatedAt == "" {
+		t.Fatalf("expected timestamps: %#v", got)
+	}
+
+	if err := store.SavePausedGoal("thread-a", "Updated goal"); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err = store.GetPausedGoal("thread-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || got.Objective != "Updated goal" {
+		t.Fatalf("updated paused goal = %#v, %v", got, ok)
+	}
+
+	if err := store.DeletePausedGoal("thread-a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := store.GetPausedGoal("thread-a"); err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Fatal("paused goal should be deleted")
+	}
+	if got, ok, err := store.GetPausedGoal("thread-b"); err != nil {
+		t.Fatal(err)
+	} else if !ok || got.Objective != "Other goal" {
+		t.Fatalf("other paused goal should remain: %#v, %v", got, ok)
+	}
+}
+
 func TestStoreTelegramPairingCodeExpires(t *testing.T) {
 	store := openTestStore(t)
 	defer closeTestStore(t, store)

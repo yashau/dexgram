@@ -45,6 +45,13 @@ type StagedAttachment struct {
 	CreatedAt       string
 }
 
+type PausedGoal struct {
+	CodexThreadID string
+	Objective     string
+	CreatedAt     string
+	UpdatedAt     string
+}
+
 func DefaultPath() (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
@@ -144,6 +151,13 @@ CREATE TABLE IF NOT EXISTS telegram_turns (
   message_id INTEGER NOT NULL,
   created_at TEXT NOT NULL,
   PRIMARY KEY (codex_thread_id, turn_id)
+);
+
+CREATE TABLE IF NOT EXISTS paused_goals (
+  codex_thread_id TEXT PRIMARY KEY,
+  objective TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 );`)
 	if err != nil {
 		return err
@@ -425,6 +439,45 @@ WHERE codex_thread_id = ? AND turn_id = ?`, codexThreadID, turnID)
 		return false, err
 	}
 	return true, nil
+}
+
+func (s *Store) SavePausedGoal(codexThreadID, objective string) error {
+	if codexThreadID == "" {
+		return fmt.Errorf("codex thread id is required")
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := s.db.Exec(`
+INSERT INTO paused_goals (codex_thread_id, objective, created_at, updated_at)
+VALUES (?, ?, ?, ?)
+ON CONFLICT(codex_thread_id) DO UPDATE SET
+  objective = excluded.objective,
+  updated_at = excluded.updated_at`,
+		codexThreadID,
+		objective,
+		now,
+		now,
+	)
+	return err
+}
+
+func (s *Store) GetPausedGoal(codexThreadID string) (PausedGoal, bool, error) {
+	row := s.db.QueryRow(`
+SELECT codex_thread_id, objective, created_at, updated_at
+FROM paused_goals
+WHERE codex_thread_id = ?`, codexThreadID)
+	var goal PausedGoal
+	if err := row.Scan(&goal.CodexThreadID, &goal.Objective, &goal.CreatedAt, &goal.UpdatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return PausedGoal{}, false, nil
+		}
+		return PausedGoal{}, false, err
+	}
+	return goal, true, nil
+}
+
+func (s *Store) DeletePausedGoal(codexThreadID string) error {
+	_, err := s.db.Exec(`DELETE FROM paused_goals WHERE codex_thread_id = ?`, codexThreadID)
+	return err
 }
 
 func (s *Store) SaveTelegramPairingCode(code string, chatID int64, expiresAt time.Time) error {

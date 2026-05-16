@@ -83,6 +83,50 @@ func TestGoalDisabledMessageDetection(t *testing.T) {
 	}
 }
 
+func TestGoalClearCommandAliases(t *testing.T) {
+	for _, text := range []string{"clear", "delete", "remove", "stop", "off", "none", " CLEAR "} {
+		if !isGoalClearCommand(text) {
+			t.Fatalf("expected %q to clear goal", text)
+		}
+	}
+	for _, text := range []string{"", "pause", "resume", "clear database migration", "pause work until tomorrow"} {
+		if isGoalClearCommand(text) {
+			t.Fatalf("did not expect %q to clear goal", text)
+		}
+	}
+}
+
+func TestGoalPauseAndResumeCommands(t *testing.T) {
+	if !isGoalPauseCommand("pause") || !isGoalPauseCommand(" PAUSE ") {
+		t.Fatal("expected pause command to be recognized")
+	}
+	if isGoalPauseCommand("pause work until tomorrow") {
+		t.Fatal("multi-word goal should not be treated as pause command")
+	}
+	if !isGoalResumeCommand("resume") || !isGoalResumeCommand(" RESUME ") {
+		t.Fatal("expected resume command to be recognized")
+	}
+	if isGoalResumeCommand("resume migration goal") {
+		t.Fatal("multi-word goal should not be treated as resume command")
+	}
+}
+
+func TestGoalStatusAndHelpCommands(t *testing.T) {
+	for _, text := range []string{"status", "show", "current", "get"} {
+		if !isGoalStatusCommand(text) {
+			t.Fatalf("expected %q to show goal status", text)
+		}
+	}
+	if isGoalStatusCommand("status report") {
+		t.Fatal("multi-word goal should not be treated as status command")
+	}
+	for _, text := range []string{"help", "?"} {
+		if !isGoalHelpCommand(text) {
+			t.Fatalf("expected %q to show goal help", text)
+		}
+	}
+}
+
 type assertErr string
 
 func (e assertErr) Error() string {

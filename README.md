@@ -234,12 +234,16 @@ Commands are registered only for authorized chats.
 - `/project <project name>` binds a new topic to a Codex project before
   the first prompt. Ambiguous matches get inline selection buttons.
 - `/status` shows the topic mapping, project/cwd, and active turn state.
+- `/usage` shows Codex 5-hour and weekly usage limits.
 - `/sync [limit]` mirrors completed Codex turns that have not been synced yet.
   It defaults to 1 turn, caps at 5 turns, and truncates oversized historical
   output.
 - `/update` updates Dexgram and restarts the bridge.
 - `/steer <message>` steers the currently active Codex turn.
-- `/goal <objective>` sets the native Codex goal for the topic.
+- `/goal` shows the current native Codex goal for the topic. `/goal <objective>`
+  sets it. `/goal pause` stores the current goal by Codex thread id, then clears
+  it in Codex. `/goal resume` restores that stored goal. `/goal clear` clears
+  without storing it; `delete`, `remove`, `stop`, `off`, and `none` are aliases.
 - `/plan <message>` starts a Codex Plan Mode turn.
 - `/settings` shows Telegram-started Plan Mode settings.
 - `/model [model-id|auto]` chooses the Plan Mode model.
