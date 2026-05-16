@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"dexgram/internal/codex"
+	"dexgram/internal/state"
 
 	"github.com/fsnotify/fsnotify"
 )
@@ -49,6 +50,28 @@ func TestSessionFileChangedDetectsSizeAndModTime(t *testing.T) {
 	}
 	if _, changed := sessionFileChanged(path, state); !changed {
 		t.Fatal("updated file should be changed")
+	}
+}
+
+func TestMirrorWorkingDirReportsMissingProjectCWD(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "deleted-project")
+	path, missingDir, err := mirrorWorkingDir(state.Conversation{CWD: missing})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != missing || !missingDir {
+		t.Fatalf("mirrorWorkingDir missing project = %q, %v; want %q, true", path, missingDir, missing)
+	}
+}
+
+func TestMirrorWorkingDirKeepsExistingProjectCWD(t *testing.T) {
+	dir := t.TempDir()
+	path, missingDir, err := mirrorWorkingDir(state.Conversation{CWD: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != dir || missingDir {
+		t.Fatalf("mirrorWorkingDir existing project = %q, %v; want %q, false", path, missingDir, dir)
 	}
 }
 

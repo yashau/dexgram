@@ -99,9 +99,22 @@ func (a *app) runDesktopMirrors(ctx context.Context) {
 }
 
 func (a *app) mirrorConversation(ctx context.Context, key string, conv state.Conversation) {
+	workingDir, missing, err := mirrorWorkingDir(conv)
+	if err != nil {
+		log.Printf("stat desktop mirror working dir key=%s thread_id=%s path=%s: %v", key, conv.CodexThreadID, workingDir, err)
+		return
+	}
+	if missing {
+		if err := a.forgetDeletedTelegramTopic(conv); err != nil {
+			log.Printf("remove desktop mirror with missing working dir key=%s thread_id=%s path=%s: %v", key, conv.CodexThreadID, workingDir, err)
+			return
+		}
+		log.Printf("desktop mirror removed mapping with missing working dir key=%s thread_id=%s path=%s", key, conv.CodexThreadID, workingDir)
+		return
+	}
 	c, err := codex.StartStdioWithOptions(ctx, codex.StartOptions{
 		CLIPath:    a.cfg.Codex.CLIPath,
-		WorkingDir: appServerWorkingDir(conv),
+		WorkingDir: workingDir,
 	})
 	if err != nil {
 		log.Printf("start desktop mirror app-server key=%s thread_id=%s: %v", key, conv.CodexThreadID, err)
@@ -271,6 +284,21 @@ func (a *app) mirrorCompletedDesktopTurns(ctx context.Context, c *codex.Client, 
 		}
 	}
 	return conv, nil
+}
+
+func mirrorWorkingDir(conv state.Conversation) (string, bool, error) {
+	workingDir := appServerWorkingDir(conv)
+	if strings.TrimSpace(workingDir) == "" || strings.TrimSpace(conv.CWD) == "" {
+		return workingDir, false, nil
+	}
+	info, err := os.Stat(workingDir)
+	if err == nil {
+		return workingDir, !info.IsDir(), nil
+	}
+	if os.IsNotExist(err) {
+		return workingDir, true, nil
+	}
+	return workingDir, false, err
 }
 
 func (a *app) requestMirrorRefresh() {
