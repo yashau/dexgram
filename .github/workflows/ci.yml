@@ -64,8 +64,11 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           "tag=$tag" >> $env:GITHUB_OUTPUT
 
-          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $release = gh release list --repo $env:GITHUB_REPOSITORY --limit 1000 --json tagName |
+            ConvertFrom-Json |
+            Where-Object { $_.tagName -eq $tag } |
+            Select-Object -First 1
+          if ($release) {
             "needed=false" >> $env:GITHUB_OUTPUT
             Write-Host "Release $tag already exists; skipping build and publish."
           } else {
@@ -101,8 +104,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.test.outputs.release_tag }}
         run: |
-          gh release view $env:TAG --repo $env:GITHUB_REPOSITORY *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $release = gh release list --repo $env:GITHUB_REPOSITORY --limit 1000 --json tagName |
+            ConvertFrom-Json |
+            Where-Object { $_.tagName -eq $env:TAG } |
+            Select-Object -First 1
+          if ($release) {
             "exists=true" >> $env:GITHUB_OUTPUT
             Write-Host "Release $env:TAG already exists; skipping build and publish."
           } else {
@@ -126,12 +132,18 @@ jobs:
           TAG: ${{ needs.test.outputs.release_tag }}
           VERSION: ${{ needs.test.outputs.release_version }}
         run: |
-          gh release view $env:TAG --repo $env:GITHUB_REPOSITORY *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $release = gh release list --repo $env:GITHUB_REPOSITORY --limit 1000 --json tagName |
+            ConvertFrom-Json |
+            Where-Object { $_.tagName -eq $env:TAG } |
+            Select-Object -First 1
+          if ($release) {
             Write-Host "Release $env:TAG already exists; skipping publish."
             exit 0
           }
 
+          if (Get-Variable PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
+            $PSNativeCommandUseErrorActionPreference = $false
+          }
           $createOutput = & gh release create $env:TAG `
             .\dist\dexgram.exe `
             .\dist\dexgram.exe.sha256 `
@@ -147,8 +159,11 @@ jobs:
 
           $createText = ($createOutput | Out-String).Trim()
           if ($createText -match 'same tag name already exists') {
-            gh release view $env:TAG --repo $env:GITHUB_REPOSITORY *> $null
-            if ($LASTEXITCODE -eq 0) {
+            $release = gh release list --repo $env:GITHUB_REPOSITORY --limit 1000 --json tagName |
+              ConvertFrom-Json |
+              Where-Object { $_.tagName -eq $env:TAG } |
+              Select-Object -First 1
+            if ($release) {
               Write-Host "Release $env:TAG was published by another workflow run; skipping publish."
               exit 0
             }
