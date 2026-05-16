@@ -243,6 +243,31 @@ func TestFreshUnboundTopicAsksHowToUseFirstMessage(t *testing.T) {
 	}
 }
 
+func TestFreshTopicCommandNewCallbackIsSilent(t *testing.T) {
+	b, api := newTelegramTestBot(t)
+	app := newHandlerTestApp(t, []int64{123})
+	token := app.rememberFreshTopic(&pendingFreshTopic{
+		chatID:          123,
+		messageThreadID: 7,
+		replyMessageID:  5,
+		input:           []map[string]any{{"type": "text", "text": "/topic asd"}},
+		displayText:     "/topic asd",
+		createdAt:       time.Now(),
+	})
+
+	app.handleFreshTopicCallback(context.Background(), b, callbackQuery("fresh:"+token+":new"))
+
+	if api.count("sendMessage") != 0 {
+		t.Fatalf("sendMessage count = %d, want 0; calls: %#v", api.count("sendMessage"), api.calls)
+	}
+	if api.bodyContains("editMessageText", "Not submitting") {
+		t.Fatalf("fresh command callback sent obsolete message: %#v", api.calls)
+	}
+	if api.count("editMessageReplyMarkup") != 1 {
+		t.Fatalf("editMessageReplyMarkup count = %d, want 1; calls: %#v", api.count("editMessageReplyMarkup"), api.calls)
+	}
+}
+
 func TestHandleSideCommandRequiresStartedCodexThread(t *testing.T) {
 	b, api := newTelegramTestBot(t)
 	app := newHandlerTestApp(t, []int64{123})

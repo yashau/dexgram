@@ -375,12 +375,11 @@ func (a *app) handleFreshTopicCallback(ctx context.Context, b *bot.Bot, query *m
 			_, _ = b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: query.ID, Text: "That pending message expired.", ShowAlert: true})
 			return
 		}
-		if name, ok := pendingFreshTopicCommandName(pending); ok {
+		if _, ok := pendingFreshTopicCommandName(pending); ok {
 			if query.Message.Message != nil {
-				_, _ = b.EditMessageText(ctx, &bot.EditMessageTextParams{
+				_, _ = b.EditMessageReplyMarkup(ctx, &bot.EditMessageReplyMarkupParams{
 					ChatID:    query.Message.Message.Chat.ID,
 					MessageID: query.Message.Message.ID,
-					Text:      fmt.Sprintf("Not submitting /%s to Codex because it is a Telegram command.", name),
 				})
 			}
 			_, _ = b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: query.ID})
@@ -578,13 +577,7 @@ func (a *app) attachSessionFromBrowser(ctx context.Context, b *bot.Bot, query *m
 	if !ok {
 		return
 	}
-	if name, ok := pendingFreshTopicCommandName(pending); ok {
-		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID:              pending.chatID,
-			MessageThreadID:     pending.messageThreadID,
-			Text:                fmt.Sprintf("Not submitting /%s to Codex because it is a Telegram command.", name),
-			DisableNotification: true,
-		})
+	if _, ok := pendingFreshTopicCommandName(pending); ok {
 		return
 	}
 	a.submitBuiltPrompt(ctx, b, pending.chatID, pending.messageThreadID, pending.replyMessageID, pending.input, pending.displayText, pending.collaborationMode)
