@@ -474,6 +474,27 @@ func textInput(prompt string) []map[string]any {
 	return input
 }
 
+func telegramPromptInput(input []map[string]any) []map[string]any {
+	out := make([]map[string]any, len(input))
+	prefixed := false
+	for i, item := range input {
+		next := make(map[string]any, len(item))
+		for k, v := range item {
+			next[k] = v
+		}
+		if !prefixed && next["type"] == "text" {
+			if text, ok := next["text"].(string); ok {
+				if prefixedText := strings.TrimSuffix(telegramTranscriptText(text), "\n"); prefixedText != "" {
+					next["text"] = prefixedText
+					prefixed = true
+				}
+			}
+		}
+		out[i] = next
+	}
+	return out
+}
+
 func interruptTurn(ctx context.Context, c *codex.Client, threadID, turnID string) error {
 	var out map[string]any
 	return c.Call(ctx, "turn/interrupt", map[string]any{
@@ -504,7 +525,7 @@ func (a *app) startNextQueuedTurn(ctx context.Context, key string, session *acti
 			continue
 		}
 		a.syncTelegramPromptTranscript(queued.ChatID, queued.MessageThreadID, queued.SourceMessageID, session.threadID, queued.Text)
-		turnID, err := startTurn(ctx, session.client, session.threadID, queued.Input, opts)
+		turnID, err := startTurn(ctx, session.client, session.threadID, telegramPromptInput(queued.Input), opts)
 		if err != nil {
 			log.Printf("codex queued turn start failed: %v", err)
 			a.removeSessionTurn(key, queued.TurnID)

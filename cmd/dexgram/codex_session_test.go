@@ -81,6 +81,38 @@ func TestAppServerWorkingDirAndTextInput(t *testing.T) {
 	}
 }
 
+func TestTelegramPromptInputPrefixesFirstTextItem(t *testing.T) {
+	input := []map[string]any{
+		{
+			"type":          "text",
+			"text":          "hello",
+			"text_elements": []any{},
+		},
+		{
+			"type": "localImage",
+			"path": `C:\photo.jpg`,
+		},
+	}
+
+	got := telegramPromptInput(input)
+	if got[0]["text"] != "Telegram: hello" {
+		t.Fatalf("telegramPromptInput text = %q", got[0]["text"])
+	}
+	if input[0]["text"] != "hello" {
+		t.Fatalf("telegramPromptInput mutated original input: %#v", input)
+	}
+	if got[1]["path"] != `C:\photo.jpg` {
+		t.Fatalf("telegramPromptInput attachment = %#v", got[1])
+	}
+}
+
+func TestTelegramPromptInputDoesNotDoublePrefix(t *testing.T) {
+	got := telegramPromptInput(textInput("Telegram: hello"))
+	if got[0]["text"] != "Telegram: hello" {
+		t.Fatalf("telegramPromptInput text = %q", got[0]["text"])
+	}
+}
+
 func TestTopicConversationDefaultsAndStoredMappings(t *testing.T) {
 	store, err := state.Open(filepath.Join(t.TempDir(), "dexgram.db"))
 	if err != nil {

@@ -66,7 +66,6 @@ func (b bufferWriteCloser) Close() error {
 }
 
 func (a *app) syncTelegramPromptTranscript(chatID int64, messageThreadID, messageID int, threadID, text string) {
-	text = telegramTranscriptText(text)
 	if messageID == 0 || strings.TrimSpace(threadID) == "" || strings.TrimSpace(text) == "" {
 		return
 	}
@@ -111,15 +110,17 @@ func telegramTranscriptText(text string) string {
 	if text == "" {
 		return ""
 	}
+	if strings.HasPrefix(text, telegramTranscriptPrefix) {
+		return text + "\n"
+	}
 	return telegramTranscriptPrefix + " " + text + "\n"
 }
 
 func insertTelegramTranscriptRecord(path, text string, meta codexJSONLDexgram, now time.Time) error {
-	text = strings.TrimSpace(text)
+	text = telegramTranscriptText(text)
 	if text == "" {
 		return nil
 	}
-	text += "\n"
 	records, err := readCodexJSONL(path)
 	if err != nil {
 		return err

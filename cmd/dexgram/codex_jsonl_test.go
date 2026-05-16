@@ -21,7 +21,7 @@ func TestInsertTelegramTranscriptRecordAppendsAfterCompletedTurn(t *testing.T) {
 	}
 
 	meta := codexJSONLDexgram{Source: "telegram", Kind: "transcript_sync", ChatID: 123, MessageThreadID: 7, MessageID: 42, Version: 1}
-	if err := insertTelegramTranscriptRecord(path, "Telegram: hello from tg\n", meta, mustTime(t, "2026-05-15T10:00:03.000Z")); err != nil {
+	if err := insertTelegramTranscriptRecord(path, "hello from tg\n", meta, mustTime(t, "2026-05-15T10:00:03.000Z")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -34,6 +34,12 @@ func TestInsertTelegramTranscriptRecordAppendsAfterCompletedTurn(t *testing.T) {
 	}
 	assertRecord(t, records[3], "2026-05-15T10:00:03.000Z", "response_item", "message", "user")
 	assertRecord(t, records[4], "2026-05-15T10:00:03.000Z", "event_msg", "user_message", "")
+	if got := recordMessageText(t, records[3]); got != "Telegram: hello from tg\n" {
+		t.Fatalf("message text = %q", got)
+	}
+	if got := recordEventMessage(t, records[4]); got != "Telegram: hello from tg\n" {
+		t.Fatalf("event message = %q", got)
+	}
 	if records[3].Dexgram == nil || records[3].Dexgram.MessageID != 42 {
 		t.Fatalf("missing dexgram metadata: %#v", records[3].Dexgram)
 	}
@@ -66,6 +72,14 @@ func TestTelegramTranscriptTextPrefixesTelegram(t *testing.T) {
 	}
 }
 
+func TestTelegramTranscriptTextDoesNotDoublePrefix(t *testing.T) {
+	got := telegramTranscriptText(" Telegram: hello ")
+	want := "Telegram: hello\n"
+	if got != want {
+		t.Fatalf("telegramTranscriptText = %q, want %q", got, want)
+	}
+}
+
 func recordWithPayload(t *testing.T, timestamp, typ, payload string) codexJSONLRecord {
 	t.Helper()
 	if !json.Valid([]byte(payload)) {
@@ -86,6 +100,27 @@ func assertRecord(t *testing.T, record codexJSONLRecord, timestamp, typ, payload
 	if header.Type != payloadType || header.Role != role {
 		t.Fatalf("payload header = %#v, want type=%s role=%s", header, payloadType, role)
 	}
+}
+
+func recordMessageText(t *testing.T, record codexJSONLRecord) string {
+	t.Helper()
+	var payload codexMessagePayload
+	if err := json.Unmarshal(record.Payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Content) != 1 {
+		t.Fatalf("content length = %d, want 1", len(payload.Content))
+	}
+	return payload.Content[0].Text
+}
+
+func recordEventMessage(t *testing.T, record codexJSONLRecord) string {
+	t.Helper()
+	var payload codexUserMessageEventPayload
+	if err := json.Unmarshal(record.Payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	return payload.Message
 }
 
 func mustTime(t *testing.T, value string) time.Time {
