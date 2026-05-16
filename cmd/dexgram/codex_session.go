@@ -518,6 +518,7 @@ func (a *app) startNextQueuedTurn(ctx context.Context, key string, session *acti
 			}
 			continue
 		}
+		a.markTelegramTurn(session.threadID, turnID, queued.ChatID, queued.MessageThreadID, queued.SourceMessageID)
 
 		tgTurn := a.promoteSessionTurn(key, queued.TurnID, turnID)
 		if tgTurn == nil {
@@ -688,12 +689,13 @@ func (a *app) handleTopicSessionEvent(ctx context.Context, key string, session *
 		if tgTurn.Initial != nil && sameTelegramText(tgTurn.Initial.text, answer) {
 			tgTurn.Initial.delete()
 		}
+		replyText := prefixQuotedPrompt(tgTurn.Text, answer)
 		sentAsNew := false
 		finalTextDelivered := false
-		if err := sendRichMessage(ctx, a.bot, tgTurn.ChatID, tgTurn.MessageThreadID, answer); err != nil {
+		if err := sendRichMessage(ctx, a.bot, tgTurn.ChatID, tgTurn.MessageThreadID, replyText); err != nil {
 			log.Printf("send final message: %v", err)
 			if tgTurn.StatusMessageID != 0 {
-				if editErr := editRichMessage(ctx, a.bot, tgTurn.ChatID, tgTurn.StatusMessageID, answer); editErr != nil {
+				if editErr := editRichMessage(ctx, a.bot, tgTurn.ChatID, tgTurn.StatusMessageID, replyText); editErr != nil {
 					log.Printf("edit fallback final message: %v", editErr)
 				} else {
 					finalTextDelivered = true

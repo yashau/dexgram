@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -14,11 +15,40 @@ func TestSessionFileEventMatches(t *testing.T) {
 	if !sessionFileEventMatches(fsnotify.Event{Name: path, Op: fsnotify.Write}, path) {
 		t.Fatal("expected write event for session file to match")
 	}
+	if !sessionFileEventMatches(fsnotify.Event{Name: filepath.Dir(path), Op: fsnotify.Write}, path) {
+		t.Fatal("expected directory write event for session directory to match")
+	}
+	if !sessionFileEventMatches(fsnotify.Event{Name: filepath.Join(filepath.Dir(path), "other.jsonl"), Op: fsnotify.Create}, path) {
+		t.Fatal("expected sibling event in session directory to wake stat check")
+	}
 	if sessionFileEventMatches(fsnotify.Event{Name: path, Op: fsnotify.Chmod}, path) {
 		t.Fatal("chmod should not trigger session mirror")
 	}
 	if sessionFileEventMatches(fsnotify.Event{Name: filepath.Join("C:", "other.jsonl"), Op: fsnotify.Write}, path) {
 		t.Fatal("different file should not match")
+	}
+}
+
+func TestSessionFileChangedDetectsSizeAndModTime(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rollout.jsonl")
+	if _, changed := sessionFileChanged(path, sessionFileState{}); changed {
+		t.Fatal("missing file should not be changed")
+	}
+	if err := os.WriteFile(path, []byte("one\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	state, changed := sessionFileChanged(path, sessionFileState{})
+	if !changed {
+		t.Fatal("first existing state should be treated as changed")
+	}
+	if _, changed := sessionFileChanged(path, state); changed {
+		t.Fatal("unchanged file should not be changed")
+	}
+	if err := os.WriteFile(path, []byte("one\ntwo\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, changed := sessionFileChanged(path, state); !changed {
+		t.Fatal("updated file should be changed")
 	}
 }
 

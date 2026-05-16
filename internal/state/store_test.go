@@ -111,6 +111,33 @@ func TestStoreGetMissingConversation(t *testing.T) {
 	}
 }
 
+func TestStoreDeleteConversationRemovesMappingAndStagedAttachments(t *testing.T) {
+	store := openTestStore(t)
+	defer closeTestStore(t, store)
+
+	if err := store.Upsert(Conversation{ChatID: 123, MessageThreadID: 7, CodexThreadID: "thread-a"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AddStagedAttachment(StagedAttachment{ChatID: 123, MessageThreadID: 7, MessageID: 42, Path: `C:\tmp\a.txt`, Kind: "file"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteConversation(123, 7); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := store.Get(123, 7); err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Fatal("conversation was not deleted")
+	}
+	attachments, err := store.ListStagedAttachments(123, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(attachments) != 0 {
+		t.Fatalf("staged attachments were not deleted: %#v", attachments)
+	}
+}
+
 func TestStoreListConversationsOrdersAndRoundTrips(t *testing.T) {
 	store := openTestStore(t)
 	defer closeTestStore(t, store)
@@ -276,6 +303,36 @@ func TestStoreTelegramTranscriptSyncMarker(t *testing.T) {
 	}
 	if !synced {
 		t.Fatal("missing transcript sync marker after upsert")
+	}
+}
+
+func TestStoreTelegramTurnMarker(t *testing.T) {
+	store := openTestStore(t)
+	defer closeTestStore(t, store)
+
+	synced, err := store.IsTelegramTurn("thread-a", "turn-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if synced {
+		t.Fatal("unexpected telegram turn marker")
+	}
+	if err := store.SaveTelegramTurn("thread-a", "turn-1", 123, 7, 42); err != nil {
+		t.Fatal(err)
+	}
+	synced, err = store.IsTelegramTurn("thread-a", "turn-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !synced {
+		t.Fatal("missing telegram turn marker")
+	}
+	synced, err = store.IsTelegramTurn("thread-a", "turn-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if synced {
+		t.Fatal("unexpected telegram turn marker for different turn")
 	}
 }
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -24,6 +25,11 @@ type desktopMirrorHandle struct {
 	threadID string
 	cancel   context.CancelFunc
 	done     <-chan struct{}
+}
+
+type sessionFileState struct {
+	modTime time.Time
+	size    int64
 }
 
 func (a *app) runDesktopMirrors(ctx context.Context) {
@@ -122,6 +128,7 @@ func (a *app) mirrorConversation(ctx context.Context, key string, conv state.Con
 	}
 	lastFallback := time.Now().Add(-desktopMirrorFallbackInterval)
 	lastPathLookup := time.Now()
+	sessionState, _ := statSessionFile(sessionPath)
 	watcher, err := newSessionFileWatcher(sessionPath)
 	if err != nil {
 		log.Printf("desktop mirror file watcher key=%s thread_id=%s: %v", key, conv.CodexThreadID, err)
@@ -143,8 +150,17 @@ func (a *app) mirrorConversation(ctx context.Context, key string, conv state.Con
 			if !sessionFileEventMatches(event, sessionPath) {
 				continue
 			}
+			nextState, changed := sessionFileChanged(sessionPath, sessionState)
+			if !changed {
+				continue
+			}
+			sessionState = nextState
 			lastFallback = time.Now()
-			conv = a.mirrorConversationOnce(ctx, c, key, conv)
+			var stop bool
+			conv, stop = a.mirrorConversationOnce(ctx, c, key, conv)
+			if stop {
+				return
+			}
 		case err, ok := <-watcherErrors(watcher):
 			if !ok {
 				watcher = nil
@@ -156,6 +172,7 @@ func (a *app) mirrorConversation(ctx context.Context, key string, conv state.Con
 				lastPathLookup = time.Now()
 				if sessionPath, hasSessionPath = codexSessionFilePath(conv.CodexThreadID); hasSessionPath {
 					closeSessionFileWatcher(watcher)
+					sessionState, _ = statSessionFile(sessionPath)
 					watcher, err = newSessionFileWatcher(sessionPath)
 					if err != nil {
 						log.Printf("desktop mirror file watcher key=%s thread_id=%s: %v", key, conv.CodexThreadID, err)
@@ -165,19 +182,27 @@ func (a *app) mirrorConversation(ctx context.Context, key string, conv state.Con
 			}
 			if time.Since(lastFallback) >= desktopMirrorFallbackInterval {
 				lastFallback = time.Now()
-				conv = a.mirrorConversationOnce(ctx, c, key, conv)
+				var stop bool
+				conv, stop = a.mirrorConversationOnce(ctx, c, key, conv)
+				if stop {
+					return
+				}
 			}
 		}
 	}
 }
 
-func (a *app) mirrorConversationOnce(ctx context.Context, c *codex.Client, key string, conv state.Conversation) state.Conversation {
+func (a *app) mirrorConversationOnce(ctx context.Context, c *codex.Client, key string, conv state.Conversation) (state.Conversation, bool) {
 	updated, err := a.mirrorCompletedDesktopTurns(ctx, c, key, conv)
 	if err != nil {
+		if errors.Is(err, errTelegramTopicGone) {
+			log.Printf("desktop mirror stopped for deleted telegram topic key=%s thread_id=%s", key, conv.CodexThreadID)
+			return conv, true
+		}
 		log.Printf("desktop mirror sync key=%s thread_id=%s: %v", key, conv.CodexThreadID, err)
-		return conv
+		return conv, false
 	}
-	return updated
+	return updated, false
 }
 
 func (a *app) mirrorCompletedDesktopTurns(ctx context.Context, c *codex.Client, key string, conv state.Conversation) (state.Conversation, error) {
@@ -225,11 +250,19 @@ func (a *app) mirrorCompletedDesktopTurns(ctx context.Context, c *codex.Client, 
 		return conv, nil
 	}
 	for _, turn := range turns {
-		if turnHasTelegramTranscriptPrompt(turn) {
+		if a.shouldSkipTelegramOriginTurn(conv.CodexThreadID, turn) {
 			conv.LastSyncedTurnID = turn.ID
 			continue
 		}
-		renderHistoricalTurnWithPrompt(ctx, a.bot, conv.ChatID, conv.MessageThreadID, turn, turnUserPrompt(turn))
+		if err := renderHistoricalTurnSilent(ctx, a.bot, conv.ChatID, conv.MessageThreadID, turn); err != nil {
+			if isTelegramTopicGoneError(err) {
+				if deleteErr := a.forgetDeletedTelegramTopic(conv); deleteErr != nil {
+					return conv, deleteErr
+				}
+				return conv, errTelegramTopicGone
+			}
+			return conv, err
+		}
 		conv.LastSyncedTurnID = turn.ID
 	}
 	if len(turns) > 0 {
@@ -316,10 +349,34 @@ func sessionFileEventMatches(event fsnotify.Event, path string) bool {
 	if strings.TrimSpace(path) == "" || event.Name == "" {
 		return false
 	}
-	if filepath.Clean(event.Name) != filepath.Clean(path) {
+	if !event.Has(fsnotify.Write) && !event.Has(fsnotify.Create) && !event.Has(fsnotify.Rename) && !event.Has(fsnotify.Remove) {
 		return false
 	}
-	return event.Has(fsnotify.Write) || event.Has(fsnotify.Create) || event.Has(fsnotify.Rename)
+	cleanEvent := filepath.Clean(event.Name)
+	cleanPath := filepath.Clean(path)
+	return cleanEvent == cleanPath || cleanEvent == filepath.Dir(cleanPath) || filepath.Dir(cleanEvent) == filepath.Dir(cleanPath)
+}
+
+func statSessionFile(path string) (sessionFileState, bool) {
+	if strings.TrimSpace(path) == "" {
+		return sessionFileState{}, false
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return sessionFileState{}, false
+	}
+	return sessionFileState{modTime: info.ModTime(), size: info.Size()}, true
+}
+
+func sessionFileChanged(path string, previous sessionFileState) (sessionFileState, bool) {
+	next, ok := statSessionFile(path)
+	if !ok {
+		return previous, false
+	}
+	if previous.size == 0 && previous.modTime.IsZero() {
+		return next, true
+	}
+	return next, next.size != previous.size || !next.modTime.Equal(previous.modTime)
 }
 
 func codexSessionFilePath(threadID string) (string, bool) {

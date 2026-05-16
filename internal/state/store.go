@@ -134,6 +134,16 @@ CREATE TABLE IF NOT EXISTS telegram_transcript_syncs (
   codex_thread_id TEXT NOT NULL,
   created_at TEXT NOT NULL,
   PRIMARY KEY (chat_id, message_thread_id, message_id)
+);
+
+CREATE TABLE IF NOT EXISTS telegram_turns (
+  codex_thread_id TEXT NOT NULL,
+  turn_id TEXT NOT NULL,
+  chat_id INTEGER NOT NULL,
+  message_thread_id INTEGER NOT NULL,
+  message_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (codex_thread_id, turn_id)
 );`)
 	if err != nil {
 		return err
@@ -235,6 +245,19 @@ ON CONFLICT(chat_id, message_thread_id) DO UPDATE SET
 		conv.LastSyncedTurnID,
 		conv.UpdatedAt,
 	)
+	return err
+}
+
+func (s *Store) DeleteConversation(chatID int64, messageThreadID int) error {
+	_, err := s.db.Exec(`
+DELETE FROM staged_attachments
+WHERE chat_id = ? AND message_thread_id = ?`, chatID, messageThreadID)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`
+DELETE FROM conversations
+WHERE chat_id = ? AND message_thread_id = ?`, chatID, messageThreadID)
 	return err
 }
 
@@ -363,6 +386,45 @@ ON CONFLICT(chat_id, message_thread_id, message_id) DO UPDATE SET
 		time.Now().UTC().Format(time.RFC3339),
 	)
 	return err
+}
+
+func (s *Store) SaveTelegramTurn(codexThreadID, turnID string, chatID int64, messageThreadID, messageID int) error {
+	if codexThreadID == "" || turnID == "" {
+		return nil
+	}
+	_, err := s.db.Exec(`
+INSERT INTO telegram_turns (
+  codex_thread_id, turn_id, chat_id, message_thread_id, message_id, created_at
+) VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT(codex_thread_id, turn_id) DO UPDATE SET
+  chat_id = excluded.chat_id,
+  message_thread_id = excluded.message_thread_id,
+  message_id = excluded.message_id`,
+		codexThreadID,
+		turnID,
+		chatID,
+		messageThreadID,
+		messageID,
+		time.Now().UTC().Format(time.RFC3339),
+	)
+	return err
+}
+
+func (s *Store) IsTelegramTurn(codexThreadID, turnID string) (bool, error) {
+	if codexThreadID == "" || turnID == "" {
+		return false, nil
+	}
+	row := s.db.QueryRow(`
+SELECT 1 FROM telegram_turns
+WHERE codex_thread_id = ? AND turn_id = ?`, codexThreadID, turnID)
+	var one int
+	if err := row.Scan(&one); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Store) SaveTelegramPairingCode(code string, chatID int64, expiresAt time.Time) error {

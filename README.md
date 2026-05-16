@@ -39,8 +39,14 @@ living on your Windows machine.
   simple: Telegram topic in, Codex session out.
 - **Topic-native Codex**: one Telegram topic maps to one Codex thread, with
   `/sessions [query]` for attaching existing sessions, `/new` for fresh chats,
-  `/project` for project-bound work, `/sync [limit]` for bounded history sync,
-  and two-way transcript mirroring between Telegram and Codex Desktop.
+  `/project` for project-bound work, and `/sync [limit]` for bounded history
+  sync.
+- **Two-way transcript sync**: Desktop-origin replies show up in Telegram in
+  near real time, with the Desktop prompt quoted above the bot reply. Telegram
+  prompts are also appended back into the Codex Desktop transcript as
+  `Telegram: ...` entries. Caveat: Codex Desktop only shows those inserted
+  Telegram entries after the desktop thread is reloaded or Codex is restarted;
+  see Existing Sessions below.
 - **Real side quests**: `/side` and `/btw` create native Codex thread forks in
   fresh Telegram topics, keeping the same project and cwd while the tangent runs
   independently.

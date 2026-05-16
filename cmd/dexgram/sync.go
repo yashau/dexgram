@@ -19,7 +19,6 @@ const (
 	defaultSyncTurnLimit = 1
 	maxSyncTurnLimit     = 5
 	attachSyncMessages   = 25
-	maxSyncRunLogLines   = 50
 	maxSyncTextRunes     = 6000
 )
 
@@ -96,11 +95,14 @@ func (a *app) handleSyncCommand(ctx context.Context, b *bot.Bot, msg *models.Mes
 		turns = turns[len(turns)-limit:]
 	}
 	for _, turn := range turns {
-		if turnHasTelegramTranscriptPrompt(turn) {
+		if a.shouldSkipTelegramOriginTurn(conv.CodexThreadID, turn) {
 			conv.LastSyncedTurnID = turn.ID
 			continue
 		}
-		renderHistoricalTurn(ctx, b, msg.Chat.ID, msg.MessageThreadID, turn)
+		if err := renderHistoricalTurn(ctx, b, msg.Chat.ID, msg.MessageThreadID, turn); err != nil {
+			log.Printf("sync turn render failed chat_id=%d thread_id=%d turn_id=%s: %v", msg.Chat.ID, msg.MessageThreadID, turn.ID, err)
+			return
+		}
 		conv.LastSyncedTurnID = turn.ID
 	}
 	if err := a.store.Upsert(conv); err != nil {
@@ -145,35 +147,22 @@ func unsyncedTurns(turns []codex.Turn, lastID string) []codex.Turn {
 	return out
 }
 
-func renderHistoricalTurn(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, turn codex.Turn) {
-	renderHistoricalTurnWithPrompt(ctx, b, chatID, messageThreadID, turn, "")
+func renderHistoricalTurn(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, turn codex.Turn) error {
+	return renderHistoricalTurnNotify(ctx, b, chatID, messageThreadID, turn, turnUserPrompt(turn), true)
 }
 
-func renderHistoricalTurnWithPrompt(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, turn codex.Turn, prompt string) {
-	initial, runLines, final := summarizeTurn(turn)
-	initial = truncateSyncText(initial)
+func renderHistoricalTurnSilent(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, turn codex.Turn) error {
+	return renderHistoricalTurnNotify(ctx, b, chatID, messageThreadID, turn, turnUserPrompt(turn), false)
+}
+
+func renderHistoricalTurnNotify(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, turn codex.Turn, prompt string, notify bool) error {
+	_, _, final := summarizeTurn(turn)
 	final = truncateSyncText(final)
-	runLines = truncateRunLines(runLines)
-	if strings.TrimSpace(initial) != "" {
-		_ = sendSilentRichMessage(ctx, b, chatID, messageThreadID, initial)
-	}
-	if len(runLines) > 0 {
-		text := "Synced run log\n\n" + strings.Join(runLines, "\n")
-		rendered := firstRenderedTelegramMessage("```text\n"+text+"\n```", 3900)
-		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID:              chatID,
-			MessageThreadID:     messageThreadID,
-			Text:                rendered.Text,
-			Entities:            rendered.Entities,
-			DisableNotification: true,
-		})
-	}
 	if strings.TrimSpace(final) != "" {
 		final = prefixQuotedPrompt(prompt, final)
-		_ = sendRichMessage(ctx, b, chatID, messageThreadID, final)
-	} else {
-		_ = sendRichMessage(ctx, b, chatID, messageThreadID, prefixQuotedPrompt(prompt, fmt.Sprintf("Synced Codex turn `%s`.", turn.ID)))
+		return sendRichMessageNotify(ctx, b, chatID, messageThreadID, final, notify)
 	}
+	return sendRichMessageNotify(ctx, b, chatID, messageThreadID, prefixQuotedPrompt(prompt, fmt.Sprintf("Synced Codex turn `%s`.", turn.ID)), notify)
 }
 
 func (a *app) syncRecentAttachedHistory(ctx context.Context, b *bot.Bot, conv *state.Conversation) error {
@@ -207,11 +196,13 @@ func (a *app) syncRecentAttachedHistory(ctx context.Context, b *bot.Bot, conv *s
 	turns := recentCompletedTurnsByMessageBudget(thread.Turns, attachSyncMessages)
 	log.Printf("attach sync thread_id=%s turns=%d selected=%d", conv.CodexThreadID, len(thread.Turns), len(turns))
 	for _, turn := range turns {
-		if turnHasTelegramTranscriptPrompt(turn) {
+		if a.shouldSkipTelegramOriginTurn(conv.CodexThreadID, turn) {
 			conv.LastSyncedTurnID = turn.ID
 			continue
 		}
-		renderHistoricalTurn(ctx, b, conv.ChatID, conv.MessageThreadID, turn)
+		if err := renderHistoricalTurn(ctx, b, conv.ChatID, conv.MessageThreadID, turn); err != nil {
+			return err
+		}
 		conv.LastSyncedTurnID = turn.ID
 	}
 	if conv.LastSyncedTurnID != "" {
@@ -220,6 +211,18 @@ func (a *app) syncRecentAttachedHistory(ctx context.Context, b *bot.Bot, conv *s
 		}
 	}
 	return nil
+}
+
+func (a *app) shouldSkipTelegramOriginTurn(codexThreadID string, turn codex.Turn) bool {
+	if turnHasTelegramTranscriptPrompt(turn) {
+		return true
+	}
+	synced, err := a.store.IsTelegramTurn(codexThreadID, turn.ID)
+	if err != nil {
+		log.Printf("read telegram turn marker thread_id=%s turn_id=%s: %v", codexThreadID, turn.ID, err)
+		return false
+	}
+	return synced
 }
 
 func recentCompletedTurnsByMessageBudget(turns []codex.Turn, maxMessages int) []codex.Turn {
@@ -253,29 +256,7 @@ func recentCompletedTurnsByMessageBudget(turns []codex.Turn, maxMessages int) []
 }
 
 func historicalTurnMessageCount(turn codex.Turn) int {
-	initial, runLines, final := summarizeTurn(turn)
-	count := 0
-	if strings.TrimSpace(initial) != "" {
-		count++
-	}
-	if len(runLines) > 0 {
-		count++
-	}
-	if strings.TrimSpace(final) != "" {
-		count++
-	} else {
-		count++
-	}
-	return count
-}
-
-func truncateRunLines(lines []string) []string {
-	if len(lines) <= maxSyncRunLogLines {
-		return lines
-	}
-	out := append([]string(nil), lines[:maxSyncRunLogLines]...)
-	out = append(out, fmt.Sprintf("... truncated %d more run log lines", len(lines)-maxSyncRunLogLines))
-	return out
+	return 1
 }
 
 func truncateSyncText(text string) string {

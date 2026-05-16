@@ -140,6 +140,13 @@ func (a *app) handleUpdate(ctx context.Context, b *bot.Bot, update *models.Updat
 		a.handleEffortCommand(ctx, b, msg, commandArg)
 		return
 	}
+	if isCommand && commandName == "topic" {
+		return
+	}
+	if isCommand {
+		a.replyUnknownCommand(ctx, b, msg, commandName)
+		return
+	}
 	prompt := strings.TrimSpace(msg.Text)
 	if prompt == "" {
 		prompt = strings.TrimSpace(msg.Caption)
@@ -185,6 +192,28 @@ func (a *app) replyUnregisteredChat(ctx context.Context, b *bot.Bot, msg *models
 		},
 	}); err != nil {
 		log.Printf("send unregistered chat setup reply chat_id=%d: %v", msg.Chat.ID, err)
+	}
+}
+
+func (a *app) replyUnknownCommand(ctx context.Context, b *bot.Bot, msg *models.Message, commandName string) {
+	text := fmt.Sprintf("Unknown Dexgram command: /%s", commandName)
+	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID:              msg.Chat.ID,
+		MessageThreadID:     msg.MessageThreadID,
+		Text:                text,
+		DisableNotification: true,
+		ReplyParameters: &models.ReplyParameters{
+			MessageID:                msg.ID,
+			ChatID:                   msg.Chat.ID,
+			AllowSendingWithoutReply: true,
+		},
+	}); err != nil {
+		log.Printf("send unknown command reply chat_id=%d thread_id=%d command=%q: %v",
+			msg.Chat.ID,
+			msg.MessageThreadID,
+			commandName,
+			err,
+		)
 	}
 }
 

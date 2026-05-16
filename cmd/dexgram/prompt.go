@@ -82,6 +82,7 @@ func (a *app) submitBuiltPrompt(ctx context.Context, b *bot.Bot, chatID int64, m
 			})
 			return
 		}
+		a.markTelegramTurn(session.threadID, turnID, chatID, messageThreadID, replyMessageID)
 	} else {
 		turnID = a.nextQueuedTurnID()
 	}
@@ -140,6 +141,12 @@ func (a *app) submitBuiltPrompt(ctx context.Context, b *bot.Bot, chatID int64, m
 	a.startTypingIndicator(key, chatID, messageThreadID)
 }
 
+func (a *app) markTelegramTurn(codexThreadID, turnID string, chatID int64, messageThreadID, messageID int) {
+	if err := a.store.SaveTelegramTurn(codexThreadID, turnID, chatID, messageThreadID, messageID); err != nil {
+		log.Printf("save telegram turn marker chat_id=%d thread_id=%d turn_id=%s: %v", chatID, messageThreadID, turnID, err)
+	}
+}
+
 func (a *app) shouldAskFreshTopicChoice(chatID int64, messageThreadID int) bool {
 	conv, ok, err := a.store.Get(chatID, messageThreadID)
 	if err != nil {
@@ -152,6 +159,14 @@ func (a *app) shouldAskFreshTopicChoice(chatID int64, messageThreadID int) bool 
 	return conv.CodexThreadID == "" &&
 		strings.TrimSpace(conv.ProjectName) == "" &&
 		strings.TrimSpace(conv.CWD) == ""
+}
+
+func pendingFreshTopicCommandName(pending *pendingFreshTopic) (string, bool) {
+	if pending == nil {
+		return "", false
+	}
+	name, _, ok := parseTelegramCommand(pending.displayText)
+	return name, ok
 }
 
 func (a *app) askFreshTopicChoice(ctx context.Context, b *bot.Bot, msg *models.Message, input []map[string]any, displayText string) {

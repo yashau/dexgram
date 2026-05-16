@@ -163,6 +163,44 @@ func TestHandleUpdateRoutesPlanUsageAndStatus(t *testing.T) {
 	}
 }
 
+func TestHandleUpdateUnknownCommandDoesNotBecomePrompt(t *testing.T) {
+	b, api := newTelegramTestBot(t)
+	app := newHandlerTestApp(t, []int64{123})
+
+	app.handleUpdate(context.Background(), b, &models.Update{Message: &models.Message{
+		ID:              5,
+		MessageThreadID: 7,
+		Chat:            models.Chat{ID: 123},
+		Text:            "/frobnicate asd",
+	}})
+
+	if api.count("sendMessage") != 1 {
+		t.Fatalf("sendMessage count = %d, want 1", api.count("sendMessage"))
+	}
+	if !api.bodyContains("sendMessage", "Unknown Dexgram command: /frobnicate") {
+		t.Fatalf("unknown command reply was not sent: %#v", api.calls)
+	}
+	if api.bodyContains("sendMessage", "How should Dexgram use this message?") {
+		t.Fatalf("unknown command fell through to prompt handling: %#v", api.calls)
+	}
+}
+
+func TestHandleUpdateTopicCommandIsIgnored(t *testing.T) {
+	b, api := newTelegramTestBot(t)
+	app := newHandlerTestApp(t, []int64{123})
+
+	app.handleUpdate(context.Background(), b, &models.Update{Message: &models.Message{
+		ID:              5,
+		MessageThreadID: 7,
+		Chat:            models.Chat{ID: 123},
+		Text:            "/topic asd",
+	}})
+
+	if api.count("sendMessage") != 0 {
+		t.Fatalf("sendMessage count = %d, want 0; calls: %#v", api.count("sendMessage"), api.calls)
+	}
+}
+
 func TestFreshUnboundTopicAsksHowToUseFirstMessage(t *testing.T) {
 	b, api := newTelegramTestBot(t)
 	app := newHandlerTestApp(t, []int64{123})

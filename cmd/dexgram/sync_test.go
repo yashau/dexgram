@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
@@ -108,6 +109,97 @@ func TestPrefixQuotedPrompt(t *testing.T) {
 	}
 }
 
+func TestRenderHistoricalTurnQuotesUserPrompt(t *testing.T) {
+	b, api := newTelegramTestBot(t)
+	phase := "final_answer"
+	turn := codex.Turn{ID: "t1", Status: "completed", Items: []codex.ThreadItem{
+		{Type: "userMessage", Content: []byte(`[{"type":"text","text":"Desktop prompt","text_elements":[]}]`)},
+		{Type: "agentMessage", Phase: &phase, Text: "Answer"},
+	}}
+
+	if err := renderHistoricalTurn(context.Background(), b, 123, 7, turn); err != nil {
+		t.Fatal(err)
+	}
+
+	if !api.bodyContains("sendMessage", "Desktop prompt") {
+		t.Fatalf("historical turn did not include prompt: %#v", api.calls)
+	}
+	if !api.bodyContains("sendMessage", "blockquote") {
+		t.Fatalf("historical turn did not send blockquote entity: %#v", api.calls)
+	}
+}
+
+func TestRenderHistoricalTurnSkipsRunLog(t *testing.T) {
+	b, api := newTelegramTestBot(t)
+	exitCode := 0
+	phase := "final_answer"
+	turn := codex.Turn{ID: "t1", Status: "completed", Items: []codex.ThreadItem{
+		{Type: "commandExecution", Command: "go test ./...", ExitCode: &exitCode},
+		{Type: "agentMessage", Phase: &phase, Text: "Done"},
+	}}
+
+	if err := renderHistoricalTurn(context.Background(), b, 123, 7, turn); err != nil {
+		t.Fatal(err)
+	}
+
+	if api.bodyContains("sendMessage", "Synced run log") || api.bodyContains("sendMessage", "go test ./...") {
+		t.Fatalf("historical turn synced run log: %#v", api.calls)
+	}
+	if !api.bodyContains("sendMessage", "Done") {
+		t.Fatalf("historical turn did not send final answer: %#v", api.calls)
+	}
+}
+
+func TestRenderHistoricalTurnSendsOnlyFinalReply(t *testing.T) {
+	b, api := newTelegramTestBot(t)
+	phase := "final_answer"
+	turn := codex.Turn{ID: "t1", Status: "completed", Items: []codex.ThreadItem{
+		{Type: "plan", Text: "Plan text"},
+		{Type: "agentMessage", Text: "Intermediate draft"},
+		{Type: "agentMessage", Phase: &phase, Text: "Final answer"},
+	}}
+
+	if err := renderHistoricalTurn(context.Background(), b, 123, 7, turn); err != nil {
+		t.Fatal(err)
+	}
+
+	if api.bodyContains("sendMessage", "Plan text") || api.bodyContains("sendMessage", "Intermediate draft") {
+		t.Fatalf("historical turn sent non-final content: %#v", api.calls)
+	}
+	if !api.bodyContains("sendMessage", "Final answer") {
+		t.Fatalf("historical turn did not send final answer: %#v", api.calls)
+	}
+}
+
+func TestRenderHistoricalTurnSilentDisablesNotification(t *testing.T) {
+	b, api := newTelegramTestBot(t)
+	phase := "final_answer"
+	turn := codex.Turn{ID: "t1", Status: "completed", Items: []codex.ThreadItem{
+		{Type: "agentMessage", Phase: &phase, Text: "Final answer"},
+	}}
+
+	if err := renderHistoricalTurnSilent(context.Background(), b, 123, 7, turn); err != nil {
+		t.Fatal(err)
+	}
+
+	if !api.bodyContains("sendMessage", "name=\"disable_notification\"") || !api.bodyContains("sendMessage", "\r\ntrue\r\n") {
+		t.Fatalf("silent historical turn did not disable notifications: %#v", api.calls)
+	}
+}
+
+func TestShouldSkipTelegramOriginTurnUsesMarker(t *testing.T) {
+	app := newHandlerTestApp(t, []int64{123})
+	if err := app.store.SaveTelegramTurn("thread-a", "turn-1", 123, 7, 42); err != nil {
+		t.Fatal(err)
+	}
+	if !app.shouldSkipTelegramOriginTurn("thread-a", codex.Turn{ID: "turn-1"}) {
+		t.Fatal("expected marked telegram turn to be skipped")
+	}
+	if app.shouldSkipTelegramOriginTurn("thread-a", codex.Turn{ID: "turn-2"}) {
+		t.Fatal("unexpected skip for unmarked turn")
+	}
+}
+
 func TestParseSyncLimitDefaultsAndCaps(t *testing.T) {
 	if got, err := parseSyncLimit(""); err != nil || got != defaultSyncTurnLimit {
 		t.Fatalf("default sync limit = %d, %v", got, err)
@@ -122,15 +214,16 @@ func TestParseSyncLimitDefaultsAndCaps(t *testing.T) {
 
 func TestRecentCompletedTurnsByMessageBudgetKeepsNewestWithinBudget(t *testing.T) {
 	phase := "final_answer"
+	exitCode := 0
 	turns := []codex.Turn{
 		{ID: "old", Status: "completed", Items: []codex.ThreadItem{{Type: "agentMessage", Phase: &phase, Text: "old"}}},
 		{ID: "running", Status: "running", Items: []codex.ThreadItem{{Type: "agentMessage", Text: "skip"}}},
-		{ID: "newer", Status: "completed", Items: []codex.ThreadItem{{Type: "plan", Text: "plan"}, {Type: "agentMessage", Phase: &phase, Text: "done"}}},
+		{ID: "newer", Status: "completed", Items: []codex.ThreadItem{{Type: "plan", Text: "plan"}, {Type: "commandExecution", Command: "go test ./...", ExitCode: &exitCode}, {Type: "agentMessage", Phase: &phase, Text: "done"}}},
 		{ID: "newest", Status: "completed", Items: []codex.ThreadItem{{Type: "agentMessage", Phase: &phase, Text: "latest"}}},
 	}
 
 	got := recentCompletedTurnsByMessageBudget(turns, 3)
-	want := []codex.Turn{turns[2], turns[3]}
+	want := []codex.Turn{turns[0], turns[2], turns[3]}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("recentCompletedTurnsByMessageBudget = %#v, want %#v", got, want)
 	}

@@ -24,10 +24,6 @@ func sendRichMessage(ctx context.Context, b *bot.Bot, chatID int64, messageThrea
 	return sendRichMessageNotify(ctx, b, chatID, messageThreadID, text, true)
 }
 
-func sendSilentRichMessage(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, text string) error {
-	return sendRichMessageNotify(ctx, b, chatID, messageThreadID, text, false)
-}
-
 func sendRichMessageNotify(ctx context.Context, b *bot.Bot, chatID int64, messageThreadID int, text string, notify bool) error {
 	for _, message := range renderTelegramMessages(text, 3200) {
 		if err := waitTelegramQueue(ctx, "send rich message", chatID, messageThreadID); err != nil {
