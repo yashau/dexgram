@@ -141,6 +141,11 @@ func (a *app) handleUpdate(ctx context.Context, b *bot.Bot, update *models.Updat
 		return
 	}
 	if isCommand && commandName == "topic" {
+		if strings.TrimSpace(commandArg) != "" && a.shouldAskFreshTopicChoice(msg.Chat.ID, msg.MessageThreadID) {
+			goFatal(func() {
+				a.handlePrompt(ctx, b, msg, commandText)
+			})
+		}
 		return
 	}
 	if isCommand {

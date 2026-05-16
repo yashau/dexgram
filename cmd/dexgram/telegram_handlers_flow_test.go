@@ -193,11 +193,34 @@ func TestHandleUpdateTopicCommandIsIgnored(t *testing.T) {
 		ID:              5,
 		MessageThreadID: 7,
 		Chat:            models.Chat{ID: 123},
-		Text:            "/topic asd",
+		Text:            "/topic",
 	}})
 
 	if api.count("sendMessage") != 0 {
 		t.Fatalf("sendMessage count = %d, want 0; calls: %#v", api.count("sendMessage"), api.calls)
+	}
+}
+
+func TestHandleUpdateTopicCommandWithTextAsksFreshTopicChoice(t *testing.T) {
+	b, api := newTelegramTestBot(t)
+	app := newHandlerTestApp(t, []int64{123})
+
+	app.handleUpdate(context.Background(), b, &models.Update{Message: &models.Message{
+		ID:              5,
+		MessageThreadID: 7,
+		Chat:            models.Chat{ID: 123},
+		Text:            "/topic asd",
+	}})
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) && !api.bodyContains("sendMessage", "How should Dexgram use this message?") {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !api.bodyContains("sendMessage", "How should Dexgram use this message?") {
+		t.Fatalf("fresh topic choice was not sent: %#v", api.calls)
+	}
+	if !api.bodyContains("sendMessage", "Resume session") || !api.bodyContains("sendMessage", "Start new chat") {
+		t.Fatalf("fresh topic buttons missing: %#v", api.calls)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"strings"
 	"time"
 
@@ -37,7 +38,9 @@ func sendRichMessageNotify(ctx context.Context, b *bot.Bot, chatID int64, messag
 			DisableNotification: !notify,
 		})
 		if err != nil {
-			logTelegramPressure("send rich message", chatID, messageThreadID, err)
+			if _, ok := logTelegramPressure("send rich message", chatID, messageThreadID, err); !ok {
+				log.Printf("send rich message chat_id=%d thread_id=%d entities=%d: %v", chatID, messageThreadID, len(message.Entities), err)
+			}
 			if err := waitTelegramQueue(ctx, "send rich fallback", chatID, messageThreadID); err != nil {
 				return err
 			}
@@ -541,6 +544,9 @@ func firstRenderedTelegramMessage(markdown string, max int) renderedTelegramMess
 func convertTelegramEntities(entities []tgmd.Entity) []models.MessageEntity {
 	out := make([]models.MessageEntity, 0, len(entities))
 	for _, entity := range entities {
+		if entity.Type == "text_link" && !validTelegramTextLinkURL(entity.URL) {
+			continue
+		}
 		out = append(out, models.MessageEntity{
 			Type:     models.MessageEntityType(entity.Type),
 			Offset:   entity.Offset,
@@ -550,6 +556,19 @@ func convertTelegramEntities(entities []tgmd.Entity) []models.MessageEntity {
 		})
 	}
 	return out
+}
+
+func validTelegramTextLinkURL(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Scheme == "" {
+		return false
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "http", "https", "tg":
+		return true
+	default:
+		return false
+	}
 }
 
 func telegramMessageHash(message renderedTelegramMessage) string {

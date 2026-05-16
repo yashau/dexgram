@@ -42,6 +42,15 @@ func TestRenderTelegramMessagesCodeFenceUsesPreEntity(t *testing.T) {
 	assertEntity(t, got, "pre")
 }
 
+func TestRenderTelegramMessagesDropsInvalidLocalTextLinks(t *testing.T) {
+	got := firstRenderedTelegramMessage("> Desktop prompt\n\nChanged [telegram_handlers.go](C:/Users/Yashau/Projects/dexgram/cmd/dexgram/telegram_handlers.go:140).", 4096)
+
+	assertContains(t, got.Text, "Desktop prompt")
+	assertContains(t, got.Text, "telegram_handlers.go")
+	assertEntity(t, got, "blockquote")
+	assertNoEntity(t, got, "text_link")
+}
+
 func TestSplitTelegramChunksHandlesEmptyParagraphsAndLongText(t *testing.T) {
 	if got := splitTelegramChunks("   ", 10); len(got) != 1 || got[0] != " " {
 		t.Fatalf("empty text chunks = %#v", got)
@@ -184,4 +193,13 @@ func assertEntity(t *testing.T, message renderedTelegramMessage, entityType stri
 		}
 	}
 	t.Fatalf("expected entity %q in %#v", entityType, message.Entities)
+}
+
+func assertNoEntity(t *testing.T, message renderedTelegramMessage, entityType string) {
+	t.Helper()
+	for _, entity := range message.Entities {
+		if string(entity.Type) == entityType {
+			t.Fatalf("unexpected entity %q in %#v", entityType, message.Entities)
+		}
+	}
 }
