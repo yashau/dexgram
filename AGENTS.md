@@ -119,6 +119,7 @@ Dexgram is intentionally Windows-specific:
 
 - Service mode prefers a current-user Windows Task Scheduler login task, falls
   back to a per-user Startup folder item, and is not a Windows Service.
+  `dexgram service start|stop|restart` should work in both modes.
 - Default paths use `%APPDATA%` and `%LOCALAPPDATA%`.
 - The Codex CLI is auto-discovered at
   `%LOCALAPPDATA%\OpenAI\Codex\bin\codex.exe`.

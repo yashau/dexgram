@@ -63,8 +63,9 @@ Dexgram is intentionally Windows-only. Codex is local, the app-server is
 local, and the bridge is happiest when it can live beside them.
 
 Service mode uses a current-user Task Scheduler login task, falling back to the
-per-user Startup folder if Task Scheduler refuses. It is not a Windows Service;
-it runs as you, because Codex runs as you.
+per-user Startup folder if Task Scheduler refuses. The same `service start`,
+`service stop`, and `service restart` commands work in either mode. It is not a
+Windows Service; it runs as you, because Codex runs as you.
 
 Because yes, Windows gets nice things too.
 
@@ -196,6 +197,7 @@ Dexgram can install itself as a user-login background process:
 ```powershell
 dexgram service install
 dexgram service start
+dexgram service restart
 dexgram service status
 ```
 

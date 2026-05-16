@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,7 +28,7 @@ func TestPrintServiceHelpIncludesTaskAndPaths(t *testing.T) {
 	var out bytes.Buffer
 	printServiceHelp(&out, "dexgram.exe")
 	text := out.String()
-	for _, want := range []string{"dexgram.exe service install", serviceTaskName, "Binary:", "Config:", "Logs:"} {
+	for _, want := range []string{"dexgram.exe service install", serviceTaskName, "Startup folder fallback", "Binary:", "Config:", "Logs:"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("service help missing %q: %q", want, text)
 		}
@@ -57,6 +58,14 @@ func TestQuoteCmdCommandWrapsFullCommand(t *testing.T) {
 	}
 }
 
+func TestQuotePowerShellStringEscapesSingleQuotes(t *testing.T) {
+	got := quotePowerShellString(`C:\Users\O'Brien\AppData\Local\Dexgram\dexgram.exe`)
+	want := `'C:\Users\O''Brien\AppData\Local\Dexgram\dexgram.exe'`
+	if got != want {
+		t.Fatalf("quotePowerShellString() = %q, want %q", got, want)
+	}
+}
+
 func TestServiceCommandOutputClassifiers(t *testing.T) {
 	if !isTaskNotRunning("ERROR: The system cannot stop the task because it is not currently running.") {
 		t.Fatal("expected task-not-running output to be recognized")
@@ -69,6 +78,43 @@ func TestServiceCommandOutputClassifiers(t *testing.T) {
 	}
 	if isTaskNotFound("SUCCESS: The scheduled task exists.") {
 		t.Fatal("did not expect success output to look missing")
+	}
+}
+
+func TestServiceStopFallsBackWhenTaskIsMissingAndStartupFallbackIsInstalled(t *testing.T) {
+	roaming := filepath.Join(t.TempDir(), "Roaming")
+	t.Setenv("APPDATA", roaming)
+	if err := installStartupFallback(`"C:\Dexgram\dexgram.exe"`, `C:\Dexgram\dexgram.log`); err != nil {
+		t.Fatalf("install startup fallback: %v", err)
+	}
+
+	oldRunSchtasks := runSchtasks
+	oldStopDirect := stopDexgramDirectProcessesFunc
+	defer func() {
+		runSchtasks = oldRunSchtasks
+		stopDexgramDirectProcessesFunc = oldStopDirect
+	}()
+
+	var gotArgs []string
+	runSchtasks = func(args ...string) (string, error) {
+		gotArgs = append([]string(nil), args...)
+		return "ERROR: The system cannot find the file specified.", errors.New("exit status 1")
+	}
+	stopDirectCalled := false
+	stopDexgramDirectProcessesFunc = func() ([]string, error) {
+		stopDirectCalled = true
+		return []string{`pid=123 path=C:\Dexgram\dexgram.exe`}, nil
+	}
+
+	if err := serviceStop(false); err != nil {
+		t.Fatalf("serviceStop() = %v", err)
+	}
+	if !stopDirectCalled {
+		t.Fatal("expected Startup fallback process stop path to be used")
+	}
+	wantArgs := []string{"/End", "/TN", serviceTaskName}
+	if strings.Join(gotArgs, "|") != strings.Join(wantArgs, "|") {
+		t.Fatalf("schtasks args = %#v, want %#v", gotArgs, wantArgs)
 	}
 }
 

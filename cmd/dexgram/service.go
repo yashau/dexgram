@@ -13,6 +13,11 @@ import (
 
 const serviceTaskName = "Dexgram"
 
+var (
+	runSchtasks                    = runSchtasksCommand
+	stopDexgramDirectProcessesFunc = stopDexgramDirectProcesses
+)
+
 func runServiceCommand(args []string) error {
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
 		printServiceHelp(os.Stdout, filepath.Base(os.Args[0]))
@@ -41,6 +46,7 @@ func printServiceHelp(w io.Writer, exe string) {
 	fmt.Fprintf(w, `Dexgram Service Commands
 
   Dexgram service mode is a Windows Task Scheduler user-login task.
+  If Task Scheduler refuses, Dexgram uses a per-user Startup folder fallback.
   It is not a Windows Service and it runs in the signed-in user's context.
 
 Usage
@@ -61,12 +67,12 @@ Paths
 
 Behavior
 
-  install    creates or replaces the scheduled task %[6]q
-  start      starts the scheduled task now
-  stop       stops the running scheduled task
-  restart    stops the task if needed, then starts it again
-  status     prints Task Scheduler status and the fixed Dexgram paths
-  uninstall  removes the scheduled task
+  install    creates or replaces the scheduled task %[6]q, or installs the Startup fallback
+  start      starts the scheduled task now, or starts Dexgram directly for the Startup fallback
+  stop       stops the running scheduled task, or the Startup fallback Dexgram process
+  restart    stops the task/process if needed, then starts it again
+  status     prints Task Scheduler/fallback status and the fixed Dexgram paths
+  uninstall  removes the scheduled task and Startup fallback
 
 The installer script can place dexgram.exe under %%LOCALAPPDATA%%\Dexgram.
 Config, logs, media, and state live under %%APPDATA%%\Dexgram.
@@ -164,6 +170,9 @@ func serviceStart() error {
 func serviceStop(ignoreNotRunning bool) error {
 	out, err := runSchtasks("/End", "/TN", serviceTaskName)
 	if err != nil {
+		if isTaskNotFound(out) && startupFallbackInstalled() {
+			return stopDexgramDirect(ignoreNotRunning)
+		}
 		if ignoreNotRunning && isTaskNotRunning(out) {
 			return nil
 		}
@@ -212,7 +221,7 @@ func printServiceStatusHeader(w io.Writer) {
 	fmt.Fprintf(w, "startup fallback: %s\n\n", mustStartupEntryPath())
 }
 
-func runSchtasks(args ...string) (string, error) {
+func runSchtasksCommand(args ...string) (string, error) {
 	cmd := exec.Command("schtasks.exe", args...)
 	out, err := cmd.CombinedOutput()
 	text := string(out)
@@ -316,6 +325,79 @@ func startDexgramDirect() error {
 	return cmd.Process.Release()
 }
 
+func stopDexgramDirect(ignoreNotRunning bool) error {
+	stopped, err := stopDexgramDirectProcessesFunc()
+	if err != nil {
+		return err
+	}
+	if len(stopped) == 0 {
+		if ignoreNotRunning {
+			return nil
+		}
+		return fmt.Errorf("Dexgram Startup fallback process is not running")
+	}
+	for _, line := range stopped {
+		fmt.Println("stopped Dexgram process " + line)
+	}
+	return nil
+}
+
+func stopDexgramDirectProcesses() ([]string, error) {
+	target := mustServiceExePath()
+	script := fmt.Sprintf(`
+$target = [System.IO.Path]::GetFullPath(%s)
+$current = %d
+$matches = Get-CimInstance Win32_Process -Filter "Name = 'dexgram.exe'" | Where-Object {
+    $_.ProcessId -ne $current -and
+    $_.ExecutablePath -and
+    ([System.IO.Path]::GetFullPath($_.ExecutablePath) -ieq $target)
+}
+$stopped = @()
+foreach ($proc in $matches) {
+    $id = [int]$proc.ProcessId
+    Stop-Process -Id $id -Force -ErrorAction Stop
+    $stopped += [pscustomobject]@{ Id = $id; Path = $proc.ExecutablePath }
+}
+$stopped | ConvertTo-Json -Compress
+`, quotePowerShellString(target), os.Getpid())
+	out, err := exec.Command("powershell.exe", "-NoProfile", "-Command", script).CombinedOutput()
+	text := strings.TrimSpace(string(out))
+	if err != nil {
+		if text == "" {
+			return nil, fmt.Errorf("stop Dexgram process: %w", err)
+		}
+		return nil, fmt.Errorf("stop Dexgram process: %w\n%s", err, text)
+	}
+	if text == "" {
+		return nil, nil
+	}
+	var raw any
+	if err := json.Unmarshal([]byte(text), &raw); err != nil {
+		return nil, fmt.Errorf("parse stopped Dexgram processes: %w", err)
+	}
+	var records []map[string]any
+	switch value := raw.(type) {
+	case []any:
+		for _, item := range value {
+			if record, ok := item.(map[string]any); ok {
+				records = append(records, record)
+			}
+		}
+	case map[string]any:
+		records = append(records, value)
+	}
+	var lines []string
+	for _, record := range records {
+		id := fmt.Sprint(record["Id"])
+		path := strings.TrimSpace(fmt.Sprint(record["Path"]))
+		if path == "" || path == "<nil>" {
+			path = "path unavailable"
+		}
+		lines = append(lines, "pid="+id+" path="+path)
+	}
+	return lines, nil
+}
+
 func quoteCmdArg(value string) string {
 	return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
 }
@@ -323,6 +405,10 @@ func quoteCmdArg(value string) string {
 func quoteCmdCommand(value string) string {
 	// cmd.exe /c expects a quoted executable command as ""program" args".
 	return `"` + value + `"`
+}
+
+func quotePowerShellString(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 
 func printDexgramRuntimeStatus() {
