@@ -14,8 +14,9 @@ import (
 const serviceTaskName = "Dexgram"
 
 var (
-	runSchtasks                    = runSchtasksCommand
-	stopDexgramDirectProcessesFunc = stopDexgramDirectProcesses
+	runSchtasks                       = runSchtasksCommand
+	runningDexgramDirectProcessesFunc = runningDexgramDirectProcesses
+	stopDexgramDirectProcessesFunc    = stopDexgramDirectProcesses
 )
 
 func runServiceCommand(args []string) error {
@@ -170,7 +171,7 @@ func serviceStart() error {
 func serviceStop(ignoreNotRunning bool) error {
 	out, err := runSchtasks("/End", "/TN", serviceTaskName)
 	if err != nil {
-		if isTaskNotFound(out) && startupFallbackInstalled() {
+		if (isTaskNotFound(out) || isTaskNotRunning(out)) && startupFallbackInstalled() {
 			return stopDexgramDirect(ignoreNotRunning)
 		}
 		if ignoreNotRunning && isTaskNotRunning(out) {
@@ -180,6 +181,9 @@ func serviceStop(ignoreNotRunning bool) error {
 	}
 	printNonEmpty(out)
 	fmt.Printf("stopped scheduled task %q\n", serviceTaskName)
+	if startupFallbackInstalled() {
+		return stopDexgramDirect(true)
+	}
 	return nil
 }
 
@@ -309,6 +313,17 @@ func startupFallbackInstalled() bool {
 }
 
 func startDexgramDirect() error {
+	running, err := runningDexgramDirectProcessesFunc()
+	if err != nil {
+		return err
+	}
+	if len(running) > 0 {
+		for _, line := range running {
+			fmt.Println("Dexgram process already running " + line)
+		}
+		return nil
+	}
+
 	cmd := exec.Command(mustServiceExePath(), "-config", mustServiceConfigPath(), "-log", mustServiceLogPath())
 	logFile, err := os.OpenFile(mustServiceLogPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
@@ -342,8 +357,22 @@ func stopDexgramDirect(ignoreNotRunning bool) error {
 	return nil
 }
 
+func runningDexgramDirectProcesses() ([]string, error) {
+	return dexgramDirectProcessLines(false)
+}
+
 func stopDexgramDirectProcesses() ([]string, error) {
+	return dexgramDirectProcessLines(true)
+}
+
+func dexgramDirectProcessLines(stop bool) ([]string, error) {
 	target := mustServiceExePath()
+	stopBlock := ""
+	if stop {
+		stopBlock = `
+    Stop-Process -Id $id -Force -ErrorAction Stop
+`
+	}
 	script := fmt.Sprintf(`
 $target = [System.IO.Path]::GetFullPath(%s)
 $current = %d
@@ -355,18 +384,18 @@ $matches = Get-CimInstance Win32_Process -Filter "Name = 'dexgram.exe'" | Where-
 $stopped = @()
 foreach ($proc in $matches) {
     $id = [int]$proc.ProcessId
-    Stop-Process -Id $id -Force -ErrorAction Stop
+%s
     $stopped += [pscustomobject]@{ Id = $id; Path = $proc.ExecutablePath }
 }
 $stopped | ConvertTo-Json -Compress
-`, quotePowerShellString(target), os.Getpid())
+`, quotePowerShellString(target), os.Getpid(), stopBlock)
 	out, err := exec.Command("powershell.exe", "-NoProfile", "-Command", script).CombinedOutput()
 	text := strings.TrimSpace(string(out))
 	if err != nil {
 		if text == "" {
-			return nil, fmt.Errorf("stop Dexgram process: %w", err)
+			return nil, fmt.Errorf("inspect Dexgram process: %w", err)
 		}
-		return nil, fmt.Errorf("stop Dexgram process: %w\n%s", err, text)
+		return nil, fmt.Errorf("inspect Dexgram process: %w\n%s", err, text)
 	}
 	if text == "" {
 		return nil, nil

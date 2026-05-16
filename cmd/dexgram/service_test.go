@@ -118,6 +118,94 @@ func TestServiceStopFallsBackWhenTaskIsMissingAndStartupFallbackIsInstalled(t *t
 	}
 }
 
+func TestServiceStopFallsBackWhenTaskIsNotRunningAndStartupFallbackIsInstalled(t *testing.T) {
+	roaming := filepath.Join(t.TempDir(), "Roaming")
+	t.Setenv("APPDATA", roaming)
+	if err := installStartupFallback(`"C:\Dexgram\dexgram.exe"`, `C:\Dexgram\dexgram.log`); err != nil {
+		t.Fatalf("install startup fallback: %v", err)
+	}
+
+	oldRunSchtasks := runSchtasks
+	oldStopDirect := stopDexgramDirectProcessesFunc
+	defer func() {
+		runSchtasks = oldRunSchtasks
+		stopDexgramDirectProcessesFunc = oldStopDirect
+	}()
+
+	runSchtasks = func(args ...string) (string, error) {
+		return "ERROR: The system cannot stop the task because it is not currently running.", errors.New("exit status 1")
+	}
+	stopDirectCalled := false
+	stopDexgramDirectProcessesFunc = func() ([]string, error) {
+		stopDirectCalled = true
+		return []string{`pid=123 path=C:\Dexgram\dexgram.exe`}, nil
+	}
+
+	if err := serviceStop(false); err != nil {
+		t.Fatalf("serviceStop() = %v", err)
+	}
+	if !stopDirectCalled {
+		t.Fatal("expected Startup fallback process stop path to be used")
+	}
+}
+
+func TestServiceStopAlsoStopsStartupFallbackAfterScheduledTaskStops(t *testing.T) {
+	roaming := filepath.Join(t.TempDir(), "Roaming")
+	t.Setenv("APPDATA", roaming)
+	if err := installStartupFallback(`"C:\Dexgram\dexgram.exe"`, `C:\Dexgram\dexgram.log`); err != nil {
+		t.Fatalf("install startup fallback: %v", err)
+	}
+
+	oldRunSchtasks := runSchtasks
+	oldStopDirect := stopDexgramDirectProcessesFunc
+	defer func() {
+		runSchtasks = oldRunSchtasks
+		stopDexgramDirectProcessesFunc = oldStopDirect
+	}()
+
+	runSchtasks = func(args ...string) (string, error) {
+		return "SUCCESS: The scheduled task was terminated.", nil
+	}
+	stopDirectCalled := false
+	stopDexgramDirectProcessesFunc = func() ([]string, error) {
+		stopDirectCalled = true
+		return []string{`pid=123 path=C:\Dexgram\dexgram.exe`}, nil
+	}
+
+	if err := serviceStop(false); err != nil {
+		t.Fatalf("serviceStop() = %v", err)
+	}
+	if !stopDirectCalled {
+		t.Fatal("expected Startup fallback process stop path to be used")
+	}
+}
+
+func TestServiceStartDoesNotDuplicateExistingStartupFallbackProcess(t *testing.T) {
+	roaming := filepath.Join(t.TempDir(), "Roaming")
+	t.Setenv("APPDATA", roaming)
+	if err := installStartupFallback(`"C:\Dexgram\dexgram.exe"`, `C:\Dexgram\dexgram.log`); err != nil {
+		t.Fatalf("install startup fallback: %v", err)
+	}
+
+	oldRunSchtasks := runSchtasks
+	oldRunningDirect := runningDexgramDirectProcessesFunc
+	defer func() {
+		runSchtasks = oldRunSchtasks
+		runningDexgramDirectProcessesFunc = oldRunningDirect
+	}()
+
+	runSchtasks = func(args ...string) (string, error) {
+		return "ERROR: The system cannot find the file specified.", errors.New("exit status 1")
+	}
+	runningDexgramDirectProcessesFunc = func() ([]string, error) {
+		return []string{`pid=123 path=C:\Dexgram\dexgram.exe`}, nil
+	}
+
+	if err := serviceStart(); err != nil {
+		t.Fatalf("serviceStart() = %v", err)
+	}
+}
+
 func TestCurrentTaskUserUsesDomainWhenAvailable(t *testing.T) {
 	t.Setenv("USERNAME", "alice")
 	t.Setenv("USERDOMAIN", "WORKSTATION")
