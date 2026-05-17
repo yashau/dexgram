@@ -883,7 +883,7 @@ func (a *app) handleStopCommand(ctx context.Context, b *bot.Bot, msg *models.Mes
 	key := fmt.Sprintf("%d:%d", msg.Chat.ID, msg.MessageThreadID)
 	session := a.activeSession(key)
 	turnID := a.currentTurnID(key)
-	if session == nil || turnID == "" {
+	if session == nil {
 		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{ChatID: msg.Chat.ID, MessageThreadID: msg.MessageThreadID, Text: "No active Codex turn in this topic."})
 		return
 	}

@@ -126,6 +126,24 @@ func TestStaleActiveTurnIDExtractsAppServerFoundTurn(t *testing.T) {
 	if got := staleActiveTurnID(mockError(msg)); got != "new-turn" {
 		t.Fatalf("staleActiveTurnID = %q", got)
 	}
+
+	msg = "app-server returned error for turn/interrupt (code -32600): expected active turn id old-turn but found current-turn"
+	if got := staleActiveTurnID(mockError(msg)); got != "current-turn" {
+		t.Fatalf("staleActiveTurnID unquoted = %q", got)
+	}
+}
+
+func TestIsTerminalTurnStatus(t *testing.T) {
+	for _, status := range []string{"completed", "failed", "cancelled", "canceled", "interrupted"} {
+		if !isTerminalTurnStatus(status) {
+			t.Fatalf("status %q should be terminal", status)
+		}
+	}
+	for _, status := range []string{"", "running", "active", "in_progress"} {
+		if isTerminalTurnStatus(status) {
+			t.Fatalf("status %q should not be terminal", status)
+		}
+	}
 }
 
 func TestTelegramStartedFinalAnswerDoesNotQuotePrompt(t *testing.T) {

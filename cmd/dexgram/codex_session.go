@@ -19,7 +19,7 @@ import (
 	"github.com/go-telegram/bot"
 )
 
-var staleActiveTurnPattern = regexp.MustCompile(`(?i)but found\s+[` + "`" + `']([^` + "`" + `']+)[` + "`" + `']`)
+var staleActiveTurnPattern = regexp.MustCompile(`(?i)but found\s+(?:[` + "`" + `']([^` + "`" + `']+)[` + "`" + `']|([^\s,.;]+))`)
 
 func (a *app) startTopicSession(ctx context.Context, key string, chatID int64, messageThreadID int, titleHint string) (*activeTurn, error) {
 	sessionCtx, cancel := context.WithCancel(ctx)
@@ -447,7 +447,12 @@ func staleActiveTurnID(err error) string {
 	if len(match) < 2 {
 		return ""
 	}
-	return strings.TrimSpace(match[1])
+	for _, group := range match[1:] {
+		if id := strings.TrimSpace(group); id != "" {
+			return id
+		}
+	}
+	return ""
 }
 
 func (a *app) setTopicGoal(ctx context.Context, chatID int64, messageThreadID int, objective string) error {
@@ -656,11 +661,60 @@ func telegramPromptInput(input []map[string]any) []map[string]any {
 }
 
 func interruptTurn(ctx context.Context, c *codex.Client, threadID, turnID string) error {
+	activeTurnID := turnID
+	if activeTurnID == "" {
+		var err error
+		activeTurnID, err = latestActiveThreadTurnID(ctx, c, threadID)
+		if err != nil {
+			return err
+		}
+		if activeTurnID == "" {
+			return fmt.Errorf("no active Codex turn in this thread")
+		}
+	}
+	for attempt := 0; attempt < 3; attempt++ {
+		if err := callInterruptTurn(ctx, c, threadID, activeTurnID); err != nil {
+			nextTurnID := staleActiveTurnID(err)
+			if nextTurnID != "" && nextTurnID != activeTurnID {
+				activeTurnID = nextTurnID
+				continue
+			}
+			return err
+		}
+		return nil
+	}
+	return callInterruptTurn(ctx, c, threadID, activeTurnID)
+}
+
+func callInterruptTurn(ctx context.Context, c *codex.Client, threadID, turnID string) error {
 	var out map[string]any
 	return c.Call(ctx, "turn/interrupt", map[string]any{
 		"threadId": threadID,
 		"turnId":   turnID,
 	}, &out)
+}
+
+func latestActiveThreadTurnID(ctx context.Context, c *codex.Client, threadID string) (string, error) {
+	var read codex.ThreadReadResponse
+	if err := c.Call(ctx, "thread/read", map[string]any{"threadId": threadID}, &read); err != nil {
+		return "", err
+	}
+	for i := len(read.Thread.Turns) - 1; i >= 0; i-- {
+		turn := read.Thread.Turns[i]
+		if turn.ID != "" && !isTerminalTurnStatus(turn.Status) {
+			return turn.ID, nil
+		}
+	}
+	return "", nil
+}
+
+func isTerminalTurnStatus(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "completed", "failed", "cancelled", "canceled", "interrupted":
+		return true
+	default:
+		return false
+	}
 }
 
 func (a *app) startNextQueuedTurn(ctx context.Context, key string, session *activeTurn) bool {
