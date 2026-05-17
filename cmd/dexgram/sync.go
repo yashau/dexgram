@@ -162,7 +162,7 @@ func renderHistoricalTurnNotify(ctx context.Context, b *bot.Bot, chatID int64, m
 		final = prefixQuotedPrompt(prompt, final)
 		return sendRichMessageNotify(ctx, b, chatID, messageThreadID, final, notify)
 	}
-	return sendRichMessageNotify(ctx, b, chatID, messageThreadID, prefixQuotedPrompt(prompt, fmt.Sprintf("Synced Codex turn `%s`.", turn.ID)), notify)
+	return nil
 }
 
 func (a *app) syncRecentAttachedHistory(ctx context.Context, b *bot.Bot, conv *state.Conversation) error {

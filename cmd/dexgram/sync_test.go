@@ -209,6 +209,21 @@ func TestRenderHistoricalTurnSendsOnlyFinalReply(t *testing.T) {
 	}
 }
 
+func TestRenderHistoricalTurnSkipsTurnsWithoutFinalText(t *testing.T) {
+	b, api := newTelegramTestBot(t)
+	turn := codex.Turn{ID: "t-empty", Status: "completed", Items: []codex.ThreadItem{
+		{Type: "userMessage", Content: []byte(`[{"type":"text","text":"Desktop prompt","text_elements":[]}]`)},
+	}}
+
+	if err := renderHistoricalTurn(context.Background(), b, 123, 7, turn); err != nil {
+		t.Fatal(err)
+	}
+
+	if api.count("sendMessage") != 0 {
+		t.Fatalf("empty promptless turn sent Telegram messages: %#v", api.calls)
+	}
+}
+
 func TestRenderHistoricalTurnSilentDisablesNotification(t *testing.T) {
 	b, api := newTelegramTestBot(t)
 	phase := "final_answer"
