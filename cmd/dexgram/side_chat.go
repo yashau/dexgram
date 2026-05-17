@@ -6,6 +6,7 @@ import (
 	"log"
 	"strings"
 
+	"dexgram/internal/codex"
 	"dexgram/internal/codexstate"
 	"dexgram/internal/state"
 
@@ -47,7 +48,7 @@ func (a *app) handleSideCommand(ctx context.Context, b *bot.Bot, msg *models.Mes
 		return
 	}
 	sideName := sideTopicTitle(sideTopicBaseTitle(parent), index)
-	threadID, cwd, err := a.forkTopicThread(ctx, msg.Chat.ID, msg.MessageThreadID, parent)
+	threadID, cwd, sideClient, err := a.forkSideTopicThread(ctx, msg.Chat.ID, msg.MessageThreadID, parent)
 	if err != nil {
 		log.Printf("fork Codex thread: %v", err)
 		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
@@ -63,6 +64,7 @@ func (a *app) handleSideCommand(ctx context.Context, b *bot.Bot, msg *models.Mes
 		Name:   sideName,
 	})
 	if err != nil {
+		_ = sideClient.Close()
 		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:          msg.Chat.ID,
 			MessageThreadID: msg.MessageThreadID,
@@ -93,6 +95,7 @@ func (a *app) handleSideCommand(ctx context.Context, b *bot.Bot, msg *models.Mes
 		side.CWD = parent.CWD
 	}
 	if err := a.store.Upsert(side); err != nil {
+		_ = sideClient.Close()
 		log.Printf("store side topic: %v", err)
 		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID:          msg.Chat.ID,
@@ -106,6 +109,33 @@ func (a *app) handleSideCommand(ctx context.Context, b *bot.Bot, msg *models.Mes
 			log.Printf("register projectless side Codex thread: %v", err)
 		}
 	}
+
+	sideKey := fmt.Sprintf("%d:%d", side.ChatID, side.MessageThreadID)
+	sessionCtx, cancel := context.WithCancel(ctx)
+	sideSession := &activeTurn{
+		client:         sideClient,
+		threadID:       threadID,
+		ctx:            sessionCtx,
+		cancel:         cancel,
+		conv:           side,
+		turns:          map[string]*telegramTurn{},
+		titleSyncItems: map[string]bool{},
+		pendingEvents:  map[string][]codex.Event{},
+	}
+	sideClient.SetServerRequestHandler(func(_ context.Context, req codex.ServerRequest) (any, error) {
+		return a.requestApproval(ctx, side.ChatID, side.MessageThreadID, req)
+	})
+	if !a.registerSession(sideKey, sideSession) {
+		cancel()
+		_ = sideClient.Close()
+		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:          msg.Chat.ID,
+			MessageThreadID: msg.MessageThreadID,
+			Text:            "Side topic created, but Dexgram already has an active session in it.",
+		})
+		return
+	}
+	go a.collectTopicSession(sessionCtx, sideKey, sideSession)
 
 	_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:              msg.Chat.ID,

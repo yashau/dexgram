@@ -159,45 +159,41 @@ func (a *app) resumeCodexThreadResult(ctx context.Context, c *codex.Client, thre
 	return out, err
 }
 
-func (a *app) forkTopicThread(ctx context.Context, chatID int64, messageThreadID int, conv state.Conversation) (string, string, error) {
+func (a *app) forkSideTopicThread(ctx context.Context, chatID int64, messageThreadID int, conv state.Conversation) (string, string, *codex.Client, error) {
 	if conv.CodexThreadID == "" {
-		return "", "", fmt.Errorf("this Telegram topic has not started a Codex thread yet")
+		return "", "", nil, fmt.Errorf("this Telegram topic has not started a Codex thread yet")
 	}
-	key := fmt.Sprintf("%d:%d", chatID, messageThreadID)
-	if session := a.activeSession(key); session != nil {
-		return a.forkCodexThread(ctx, session.client, session.conv)
+	c, err := a.startForkAppServer(ctx, chatID, messageThreadID, conv)
+	if err != nil {
+		return "", "", nil, err
 	}
+	threadID, cwd, err := a.forkCodexThread(ctx, c, conv)
+	if err != nil {
+		_ = c.Close()
+		return "", "", nil, err
+	}
+	return threadID, cwd, c, nil
+}
 
+func (a *app) startForkAppServer(ctx context.Context, chatID int64, messageThreadID int, conv state.Conversation) (*codex.Client, error) {
 	c, err := codex.StartStdioWithOptions(ctx, codex.StartOptions{
 		CLIPath:    a.cfg.Codex.CLIPath,
 		WorkingDir: appServerWorkingDir(conv),
 	})
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
-	done := make(chan struct{})
-	defer close(done)
-	defer func() {
-		_ = c.Close()
-	}()
-	errs := c.Errors()
 	go func() {
-		for {
-			select {
-			case err, ok := <-errs:
-				if !ok {
-					return
-				}
+		for err := range c.Errors() {
+			if err != nil {
 				log.Printf("codex app-server: %v", err)
-			case <-done:
-				return
 			}
 		}
 	}()
 	c.SetServerRequestHandler(func(_ context.Context, req codex.ServerRequest) (any, error) {
 		return a.requestApproval(ctx, chatID, messageThreadID, req)
 	})
-	return a.forkCodexThread(ctx, c, conv)
+	return c, nil
 }
 
 func (a *app) forkCodexThread(ctx context.Context, c *codex.Client, conv state.Conversation) (string, string, error) {

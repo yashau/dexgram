@@ -305,8 +305,8 @@ parent topic; each one gets the next number.
 `/side` and `/btw` are guarded: they only work after the source topic has
 already started and registered a Codex thread. A fresh `/new` topic or
 project-only topic needs its first normal Codex message before it can be forked.
-If the parent thread is idle, Dexgram resumes it first and only creates the
-Telegram side topic after Codex accepts the fork.
+Dexgram starts a fresh app-server for the side topic, creates the ephemeral
+fork there, and keeps that app-server attached to the new topic.
 
 You can also include the first side-chat prompt in the command:
 
