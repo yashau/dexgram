@@ -194,9 +194,6 @@ func (a *app) forkTopicThread(ctx context.Context, chatID int64, messageThreadID
 	c.SetServerRequestHandler(func(_ context.Context, req codex.ServerRequest) (any, error) {
 		return a.requestApproval(ctx, chatID, messageThreadID, req)
 	})
-	if err := a.resumeCodexThread(ctx, c, conv.CodexThreadID); err != nil {
-		return "", "", err
-	}
 	return a.forkCodexThread(ctx, c, conv)
 }
 
