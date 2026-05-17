@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -17,6 +18,8 @@ import (
 
 	"github.com/go-telegram/bot"
 )
+
+var staleActiveTurnPattern = regexp.MustCompile(`(?i)but found\s+[` + "`" + `']([^` + "`" + `']+)[` + "`" + `']`)
 
 func (a *app) startTopicSession(ctx context.Context, key string, chatID int64, messageThreadID int, titleHint string) (*activeTurn, error) {
 	sessionCtx, cancel := context.WithCancel(ctx)
@@ -410,6 +413,22 @@ func steerTurn(ctx context.Context, c *codex.Client, threadID, expectedTurnID st
 			"text_elements": []any{},
 		}}
 	}
+	activeTurnID := expectedTurnID
+	for attempt := 0; attempt < 3; attempt++ {
+		if err := callSteerTurn(ctx, c, threadID, activeTurnID, input); err != nil {
+			nextTurnID := staleActiveTurnID(err)
+			if nextTurnID != "" && nextTurnID != activeTurnID {
+				activeTurnID = nextTurnID
+				continue
+			}
+			return err
+		}
+		return nil
+	}
+	return callSteerTurn(ctx, c, threadID, activeTurnID, input)
+}
+
+func callSteerTurn(ctx context.Context, c *codex.Client, threadID, expectedTurnID string, input []map[string]any) error {
 	var out struct {
 		TurnID string `json:"turnId"`
 	}
@@ -418,6 +437,17 @@ func steerTurn(ctx context.Context, c *codex.Client, threadID, expectedTurnID st
 		"expectedTurnId": expectedTurnID,
 		"input":          input,
 	}, &out)
+}
+
+func staleActiveTurnID(err error) string {
+	if err == nil {
+		return ""
+	}
+	match := staleActiveTurnPattern.FindStringSubmatch(err.Error())
+	if len(match) < 2 {
+		return ""
+	}
+	return strings.TrimSpace(match[1])
 }
 
 func (a *app) setTopicGoal(ctx context.Context, chatID int64, messageThreadID int, objective string) error {

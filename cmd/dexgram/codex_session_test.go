@@ -116,6 +116,18 @@ func TestTelegramPromptInputDoesNotDoublePrefix(t *testing.T) {
 	}
 }
 
+func TestStaleActiveTurnIDExtractsAppServerFoundTurn(t *testing.T) {
+	err := os.ErrInvalid
+	if got := staleActiveTurnID(err); got != "" {
+		t.Fatalf("plain error extracted turn id %q", got)
+	}
+
+	msg := "app-server returned error for turn/steer (code -32600): expected active turn id `old`, but found `new-turn`"
+	if got := staleActiveTurnID(mockError(msg)); got != "new-turn" {
+		t.Fatalf("staleActiveTurnID = %q", got)
+	}
+}
+
 func TestTelegramStartedFinalAnswerDoesNotQuotePrompt(t *testing.T) {
 	b, api := newTelegramTestBot(t)
 	app := newHandlerTestApp(t, []int64{123})
@@ -244,6 +256,12 @@ func TestAutonomousEmptyTurnDoesNotSendCompletionMessage(t *testing.T) {
 }
 
 type testEventPayload []byte
+
+type mockError string
+
+func (e mockError) Error() string {
+	return string(e)
+}
 
 func mustJSON(t *testing.T, value any) testEventPayload {
 	t.Helper()

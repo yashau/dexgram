@@ -30,15 +30,15 @@ func TestSessionStateTracksTurnsInOrder(t *testing.T) {
 	if got := app.sessionTurnCount("chat:topic"); got != 2 {
 		t.Fatalf("turn count = %d", got)
 	}
-	if got := app.currentTurnID("chat:topic"); got != "turn-1" {
+	if got := app.currentTurnID("chat:topic"); got != "turn-2" {
 		t.Fatalf("current turn = %q", got)
 	}
 	if got := app.sessionTurn("chat:topic", "turn-2"); got == nil || got.TurnID != "turn-2" {
 		t.Fatalf("unexpected turn: %#v", got)
 	}
 
-	app.removeSessionTurn("chat:topic", "turn-1")
-	if got := app.currentTurnID("chat:topic"); got != "turn-2" {
+	app.removeSessionTurn("chat:topic", "turn-2")
+	if got := app.currentTurnID("chat:topic"); got != "turn-1" {
 		t.Fatalf("current turn after removal = %q", got)
 	}
 

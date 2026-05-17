@@ -158,7 +158,8 @@ func (a *app) currentTurnID(key string) string {
 	if session == nil {
 		return ""
 	}
-	for _, id := range session.order {
+	for i := len(session.order) - 1; i >= 0; i-- {
+		id := session.order[i]
 		if turn := session.turns[id]; turn != nil && !turn.Queued {
 			return id
 		}
