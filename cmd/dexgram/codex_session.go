@@ -111,6 +111,9 @@ func (a *app) prepareTopicConversation(ctx context.Context, c *codex.Client, con
 		log.Printf("mapped telegram thread %d:%d to codex thread %s", conv.ChatID, conv.MessageThreadID, threadID)
 		return conv, nil
 	}
+	if conv.SideChat {
+		return conv, nil
+	}
 	if err := a.resumeCodexThread(ctx, c, conv.CodexThreadID); err != nil {
 		return state.Conversation{}, err
 	}

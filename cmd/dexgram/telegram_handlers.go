@@ -49,6 +49,9 @@ func (a *app) handleUpdate(ctx context.Context, b *bot.Bot, update *models.Updat
 		a.replyUnregisteredChat(ctx, b, msg)
 		return
 	}
+	if a.handleForumTopicEdited(msg) {
+		return
+	}
 	ackTelegramMessage(ctx, b, msg)
 
 	text := msg.Text
@@ -192,6 +195,30 @@ func (a *app) allowedChat(chatID int64) bool {
 		}
 	}
 	return false
+}
+
+func (a *app) handleForumTopicEdited(msg *models.Message) bool {
+	if msg == nil || msg.ForumTopicEdited == nil {
+		return false
+	}
+	name := strings.TrimSpace(msg.ForumTopicEdited.Name)
+	if name == "" {
+		return true
+	}
+	conv, ok, err := a.store.Get(msg.Chat.ID, msg.MessageThreadID)
+	if err != nil {
+		log.Printf("read conversation for topic rename chat_id=%d thread_id=%d: %v", msg.Chat.ID, msg.MessageThreadID, err)
+		return true
+	}
+	if !ok {
+		return true
+	}
+	conv.TopicTitle = name
+	conv.TopicNamed = true
+	if err := a.store.Upsert(conv); err != nil {
+		log.Printf("store topic rename chat_id=%d thread_id=%d title=%q: %v", msg.Chat.ID, msg.MessageThreadID, name, err)
+	}
+	return true
 }
 
 func (a *app) replyUnregisteredChat(ctx context.Context, b *bot.Bot, msg *models.Message) {

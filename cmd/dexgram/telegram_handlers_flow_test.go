@@ -295,6 +295,37 @@ func TestHandleSideCommandRequiresStartedCodexThread(t *testing.T) {
 	}
 }
 
+func TestHandleUpdateStoresForumTopicRename(t *testing.T) {
+	b, api := newTelegramTestBot(t)
+	app := newHandlerTestApp(t, []int64{123})
+	if err := app.store.Upsert(state.Conversation{
+		ChatID:          123,
+		MessageThreadID: 7,
+		CodexThreadID:   "thread-1",
+		TopicTitle:      "Old title",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	app.handleUpdate(context.Background(), b, &models.Update{Message: &models.Message{
+		ID:               6,
+		MessageThreadID:  7,
+		Chat:             models.Chat{ID: 123},
+		ForumTopicEdited: &models.ForumTopicEdited{Name: "Manual topic name"},
+	}})
+
+	conv, ok, err := app.store.Get(123, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || conv.TopicTitle != "Manual topic name" || !conv.TopicNamed {
+		t.Fatalf("conversation rename not stored: ok=%v conv=%#v", ok, conv)
+	}
+	if api.count("sendMessage") != 0 {
+		t.Fatalf("rename service message should not send Telegram messages: %#v", api.calls)
+	}
+}
+
 func TestHandlePendingInputReplyBuildsAnswers(t *testing.T) {
 	b, api := newTelegramTestBot(t)
 	app := newHandlerTestApp(t, []int64{123})
