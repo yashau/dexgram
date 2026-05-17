@@ -137,6 +137,21 @@ func TestHandleUpdateGoalResumeRestoresPausedGoal(t *testing.T) {
 	}
 }
 
+func TestPausedGoalObjectiveRequiresLivePausedStatus(t *testing.T) {
+	if got := pausedGoalObjective(&codex.ThreadGoal{Objective: "Resume me", Status: " paused "}); got != "Resume me" {
+		t.Fatalf("pausedGoalObjective = %q", got)
+	}
+	for _, goal := range []*codex.ThreadGoal{
+		nil,
+		{Objective: "Active", Status: "active"},
+		{Objective: "   ", Status: "paused"},
+	} {
+		if got := pausedGoalObjective(goal); got != "" {
+			t.Fatalf("pausedGoalObjective(%#v) = %q", goal, got)
+		}
+	}
+}
+
 func TestHandleUpdateGoalClearPhraseSetsObjective(t *testing.T) {
 	b, api := newTelegramTestBot(t)
 	testApp := newHandlerTestApp(t, []int64{123})

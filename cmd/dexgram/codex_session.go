@@ -544,16 +544,35 @@ func (a *app) resumeTopicGoal(ctx context.Context, chatID int64, messageThreadID
 		if err != nil {
 			return err
 		}
-		if !ok || strings.TrimSpace(paused.Objective) == "" {
-			return fmt.Errorf("no paused Codex goal is stored for this thread")
+		if ok {
+			objective = strings.TrimSpace(paused.Objective)
 		}
-		objective = strings.TrimSpace(paused.Objective)
+		if objective == "" {
+			goal, err := getThreadGoal(ctx, c, threadID)
+			if err != nil {
+				return err
+			}
+			objective = pausedGoalObjective(goal)
+		}
+		if objective == "" {
+			return fmt.Errorf("no paused Codex goal is stored or active for this thread")
+		}
 		if err := setThreadGoal(ctx, c, threadID, objective); err != nil {
 			return err
 		}
-		return a.store.DeletePausedGoal(threadID)
+		if ok {
+			return a.store.DeletePausedGoal(threadID)
+		}
+		return nil
 	})
 	return objective, err
+}
+
+func pausedGoalObjective(goal *codex.ThreadGoal) string {
+	if goal == nil || !strings.EqualFold(strings.TrimSpace(goal.Status), "paused") {
+		return ""
+	}
+	return strings.TrimSpace(goal.Objective)
 }
 
 func (a *app) withExistingTopicCodexClient(ctx context.Context, chatID int64, messageThreadID int, fn func(*codex.Client, string) error) error {
