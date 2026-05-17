@@ -167,6 +167,97 @@ func TestTelegramStartedFinalAnswerDoesNotQuotePrompt(t *testing.T) {
 	}
 }
 
+func TestAutonomousTurnStartedRendersFinalAnswer(t *testing.T) {
+	b, api := newTelegramTestBot(t)
+	app := newHandlerTestApp(t, []int64{123})
+	app.bot = b
+	key := "123:7"
+	session := &activeTurn{
+		threadID: "thread-1",
+		conv: state.Conversation{
+			ChatID:          123,
+			MessageThreadID: 7,
+			CodexThreadID:   "thread-1",
+			TopicNamed:      true,
+		},
+		turns: map[string]*telegramTurn{},
+	}
+	if !app.registerSession(key, session) {
+		t.Fatal("register session")
+	}
+
+	app.handleTopicSessionEvent(context.Background(), key, session, mustJSON(t, struct {
+		ThreadID string     `json:"threadId"`
+		Turn     codex.Turn `json:"turn"`
+	}{ThreadID: "thread-1", Turn: codex.Turn{ID: "goal-turn"}}).event("turn/started"))
+
+	phase := "final_answer"
+	app.handleTopicSessionEvent(context.Background(), key, session, mustJSON(t, codex.ItemCompletedNotification{
+		ThreadID: "thread-1",
+		TurnID:   "goal-turn",
+		Item:     codex.ThreadItem{Type: "agentMessage", Phase: &phase, Text: "Autonomous final"},
+	}).event("item/completed"))
+	app.handleTopicSessionEvent(context.Background(), key, session, mustJSON(t, codex.TurnCompletedNotification{
+		ThreadID: "thread-1",
+		Turn:     codex.Turn{ID: "goal-turn", Status: "completed"},
+	}).event("turn/completed"))
+
+	if !api.bodyContains("sendMessage", "Autonomous final") {
+		t.Fatalf("autonomous final answer was not sent: %#v", api.calls)
+	}
+	if api.bodyContains("sendMessage", "reply_parameters") {
+		t.Fatalf("autonomous final answer unexpectedly replied to a user message: %#v", api.calls)
+	}
+}
+
+func TestAutonomousEmptyTurnDoesNotSendCompletionMessage(t *testing.T) {
+	b, api := newTelegramTestBot(t)
+	app := newHandlerTestApp(t, []int64{123})
+	app.bot = b
+	key := "123:7"
+	session := &activeTurn{
+		threadID: "thread-1",
+		conv: state.Conversation{
+			ChatID:          123,
+			MessageThreadID: 7,
+			CodexThreadID:   "thread-1",
+			TopicNamed:      true,
+		},
+		turns: map[string]*telegramTurn{},
+	}
+	if !app.registerSession(key, session) {
+		t.Fatal("register session")
+	}
+
+	app.handleTopicSessionEvent(context.Background(), key, session, mustJSON(t, struct {
+		ThreadID string     `json:"threadId"`
+		Turn     codex.Turn `json:"turn"`
+	}{ThreadID: "thread-1", Turn: codex.Turn{ID: "empty-goal-turn"}}).event("turn/started"))
+	app.handleTopicSessionEvent(context.Background(), key, session, mustJSON(t, codex.TurnCompletedNotification{
+		ThreadID: "thread-1",
+		Turn:     codex.Turn{ID: "empty-goal-turn", Status: "completed"},
+	}).event("turn/completed"))
+
+	if api.count("sendMessage") != 0 {
+		t.Fatalf("empty autonomous turn sent Telegram messages: %#v", api.calls)
+	}
+}
+
+type testEventPayload []byte
+
+func mustJSON(t *testing.T, value any) testEventPayload {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+func (p testEventPayload) event(method string) codex.Event {
+	return codex.Event{Method: method, Params: json.RawMessage(p)}
+}
+
 func TestTopicConversationDefaultsAndStoredMappings(t *testing.T) {
 	store, err := state.Open(filepath.Join(t.TempDir(), "dexgram.db"))
 	if err != nil {

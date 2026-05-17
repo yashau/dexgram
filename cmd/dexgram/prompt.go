@@ -72,8 +72,10 @@ func (a *app) submitBuiltPrompt(ctx context.Context, b *bot.Bot, chatID int64, m
 			return
 		}
 		a.syncTelegramPromptTranscript(chatID, messageThreadID, replyMessageID, session.threadID, displayText)
+		a.beginSessionStartingTurn(key, session)
 		turnID, err = startTurn(ctx, session.client, session.threadID, telegramPromptInput(input), opts)
 		if err != nil {
+			a.endSessionStartingTurn(key, session)
 			log.Printf("codex turn start failed: %v", err)
 			_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
 				ChatID:          chatID,
@@ -135,8 +137,12 @@ func (a *app) submitBuiltPrompt(ctx context.Context, b *bot.Bot, chatID int64, m
 	a.addSessionTurn(key, tgTurn)
 	for _, ev := range a.takePendingTurnEvents(key, turnID) {
 		if a.handleTopicSessionEvent(ctx, key, session, ev) {
+			a.endSessionStartingTurn(key, session)
 			return
 		}
+	}
+	if !queued {
+		a.endSessionStartingTurn(key, session)
 	}
 	a.startTypingIndicator(key, chatID, messageThreadID)
 }

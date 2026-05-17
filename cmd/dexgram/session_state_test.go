@@ -143,6 +143,42 @@ func TestUnknownTurnEventsAreDeferredAndReplayed(t *testing.T) {
 	}
 }
 
+func TestUnknownTurnStartedDefersOnlyWhileStartingTelegramTurn(t *testing.T) {
+	app := newTestApp()
+	session := &activeTurn{
+		ctx:           context.Background(),
+		turns:         map[string]*telegramTurn{},
+		pendingEvents: map[string][]codex.Event{},
+	}
+	if !app.registerSession("chat:topic", session) {
+		t.Fatal("expected session register")
+	}
+	params, err := json.Marshal(map[string]any{
+		"threadId": "thread-1",
+		"turn":     map[string]any{"id": "turn-1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := codex.Event{Method: "turn/started", Params: params}
+	if app.deferUnknownTurnEvent("chat:topic", session, ev) {
+		t.Fatal("autonomous turn/started should not be deferred")
+	}
+
+	app.beginSessionStartingTurn("chat:topic", session)
+	if !app.deferUnknownTurnEvent("chat:topic", session, ev) {
+		t.Fatal("telegram turn/started should be deferred while turn/start is in flight")
+	}
+	app.endSessionStartingTurn("chat:topic", session)
+	events := app.takePendingTurnEvents("chat:topic", "turn-1")
+	if len(events) != 1 || events[0].Method != "turn/started" {
+		t.Fatalf("unexpected deferred turn/started events: %#v", events)
+	}
+	if app.sessionStartingTurn("chat:topic", session) {
+		t.Fatal("starting turn counter should be cleared")
+	}
+}
+
 func TestTypingActionReservationIsGloballyThrottled(t *testing.T) {
 	app := newTestApp()
 	if !app.reserveTypingAction(123, 456) {

@@ -83,6 +83,20 @@ func TestGoalDisabledMessageDetection(t *testing.T) {
 	}
 }
 
+func TestTelegramNoopTopicEditDetection(t *testing.T) {
+	for _, err := range []error{
+		assertErr("Bad Request: TOPIC_NOT_MODIFIED"),
+		assertErr("Bad Request: forum topic not modified"),
+	} {
+		if !isTelegramNoopTopicEdit(err) {
+			t.Fatalf("expected noop topic edit error: %v", err)
+		}
+	}
+	if isTelegramNoopTopicEdit(nil) || isTelegramNoopTopicEdit(assertErr("Bad Request: topic deleted")) {
+		t.Fatal("unexpected noop topic edit detection")
+	}
+}
+
 func TestGoalClearCommandAliases(t *testing.T) {
 	for _, text := range []string{"clear", "delete", "remove", "stop", "off", "none", " CLEAR "} {
 		if !isGoalClearCommand(text) {

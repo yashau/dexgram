@@ -52,6 +52,7 @@ type activeTurn struct {
 	order          []string
 	titleSyncItems map[string]bool
 	pendingEvents  map[string][]codex.Event
+	startingTurns  int
 	typing         bool
 }
 
@@ -65,6 +66,7 @@ type telegramTurn struct {
 	Text              string
 	Input             []map[string]any
 	CollaborationMode string
+	Autonomous        bool
 	LastAgent         string
 	FinalAnswer       string
 	Buffers           map[string]string

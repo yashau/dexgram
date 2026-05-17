@@ -34,6 +34,30 @@ func (a *app) addSessionTurn(key string, turn *telegramTurn) {
 	session.order = append(session.order, turn.TurnID)
 }
 
+func (a *app) beginSessionStartingTurn(key string, session *activeTurn) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.active[key] != session {
+		return
+	}
+	session.startingTurns++
+}
+
+func (a *app) endSessionStartingTurn(key string, session *activeTurn) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.active[key] != session || session.startingTurns == 0 {
+		return
+	}
+	session.startingTurns--
+}
+
+func (a *app) sessionStartingTurn(key string, session *activeTurn) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.active[key] == session && session.startingTurns > 0
+}
+
 func (a *app) takePendingTurnEvents(key, turnID string) []codex.Event {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -174,6 +198,9 @@ func (a *app) release(key string) {
 }
 
 func (a *app) deferUnknownTurnEvent(key string, session *activeTurn, ev codex.Event) bool {
+	if ev.Method == "turn/started" && !a.sessionStartingTurn(key, session) {
+		return false
+	}
 	turnID := eventTurnID(ev)
 	if turnID == "" || a.sessionTurn(key, turnID) != nil {
 		return false

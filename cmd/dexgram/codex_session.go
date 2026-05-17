@@ -256,7 +256,9 @@ func (a *app) syncTopicTitle(ctx context.Context, conv *state.Conversation, c *c
 		MessageThreadID: conv.MessageThreadID,
 		Name:            topicName,
 	}); err != nil {
-		return err
+		if !isTelegramNoopTopicEdit(err) {
+			return err
+		}
 	}
 	conv.TopicTitle = topicName
 	conv.TopicNamed = true
@@ -278,6 +280,14 @@ func (a *app) syncTopicTitleForDelta(ctx context.Context, session *activeTurn, i
 	}
 	session.titleSyncItems[itemID] = true
 	a.syncTopicTitleBestEffort(ctx, session)
+}
+
+func isTelegramNoopTopicEdit(err error) bool {
+	if err == nil {
+		return false
+	}
+	text := strings.ToLower(err.Error())
+	return strings.Contains(text, "not modified") || strings.Contains(text, "topic_not_modified")
 }
 
 func projectlessRoot() string {
@@ -645,8 +655,10 @@ func (a *app) startNextQueuedTurn(ctx context.Context, key string, session *acti
 			continue
 		}
 		a.syncTelegramPromptTranscript(queued.ChatID, queued.MessageThreadID, queued.SourceMessageID, session.threadID, queued.Text)
+		a.beginSessionStartingTurn(key, session)
 		turnID, err := startTurn(ctx, session.client, session.threadID, telegramPromptInput(queued.Input), opts)
 		if err != nil {
+			a.endSessionStartingTurn(key, session)
 			log.Printf("codex queued turn start failed: %v", err)
 			a.removeSessionTurn(key, queued.TurnID)
 			a.forgetTurnAction(key, queued.TurnID)
@@ -663,6 +675,7 @@ func (a *app) startNextQueuedTurn(ctx context.Context, key string, session *acti
 
 		tgTurn := a.promoteSessionTurn(key, queued.TurnID, turnID)
 		if tgTurn == nil {
+			a.endSessionStartingTurn(key, session)
 			_ = interruptTurn(ctx, session.client, session.threadID, turnID)
 			continue
 		}
@@ -677,9 +690,11 @@ func (a *app) startNextQueuedTurn(ctx context.Context, key string, session *acti
 		}
 		for _, ev := range a.takePendingTurnEvents(key, turnID) {
 			if a.handleTopicSessionEvent(ctx, key, session, ev) {
+				a.endSessionStartingTurn(key, session)
 				return false
 			}
 		}
+		a.endSessionStartingTurn(key, session)
 		a.startTypingIndicator(key, tgTurn.ChatID, tgTurn.MessageThreadID)
 		return true
 	}
@@ -715,7 +730,19 @@ func (a *app) handleTopicSessionEvent(ctx context.Context, key string, session *
 			Turn     codex.Turn `json:"turn"`
 		}
 		if json.Unmarshal(ev.Params, &started) == nil {
-			if tgTurn := a.sessionTurn(key, started.Turn.ID); tgTurn != nil && tgTurn.StatusMessageID != 0 {
+			tgTurn := a.sessionTurn(key, started.Turn.ID)
+			if tgTurn == nil && started.ThreadID == session.threadID && started.Turn.ID != "" {
+				tgTurn = &telegramTurn{
+					TurnID:          started.Turn.ID,
+					ChatID:          session.conv.ChatID,
+					MessageThreadID: session.conv.MessageThreadID,
+					Autonomous:      true,
+					Buffers:         map[string]string{},
+					SentFiles:       map[string]bool{},
+				}
+				a.addSessionTurn(key, tgTurn)
+			}
+			if tgTurn != nil && tgTurn.StatusMessageID != 0 {
 				if err := waitTelegramQueue(ctx, "edit status message", tgTurn.ChatID, tgTurn.MessageThreadID); err != nil {
 					return false
 				}
@@ -725,6 +752,13 @@ func (a *app) handleTopicSessionEvent(ctx context.Context, key string, session *
 					Text:        "Dexgram is thinking...",
 					ReplyMarkup: turnControlMarkup(a.rememberTurnAction(key, tgTurn.TurnID), false),
 				})
+			}
+			if tgTurn != nil {
+				for _, pending := range a.takePendingTurnEvents(key, started.Turn.ID) {
+					if a.handleTopicSessionEvent(ctx, key, session, pending) {
+						return true
+					}
+				}
 			}
 		}
 	case "item/started":
@@ -755,8 +789,10 @@ func (a *app) handleTopicSessionEvent(ctx context.Context, key string, session *
 	case "item/agentMessage/delta", "item/plan/delta":
 		var delta codex.AgentMessageDeltaNotification
 		if json.Unmarshal(ev.Params, &delta) == nil {
-			a.syncTopicTitleForDelta(ctx, session, delta.ItemID, delta.Delta)
 			if tgTurn := a.sessionTurn(key, delta.TurnID); tgTurn != nil {
+				if !tgTurn.Autonomous {
+					a.syncTopicTitleForDelta(ctx, session, delta.ItemID, delta.Delta)
+				}
 				tgTurn.Buffers[delta.ItemID] += delta.Delta
 				if tgTurn.isCompactionItemID(delta.ItemID) {
 					tgTurn.startCompactionDraft(ctx, a.bot, delta.ItemID)
@@ -774,14 +810,14 @@ func (a *app) handleTopicSessionEvent(ctx context.Context, key string, session *
 		if json.Unmarshal(ev.Params, &item) != nil {
 			return false
 		}
-		if item.Item.Type == "agentMessage" || item.Item.Type == "plan" {
-			if strings.TrimSpace(item.Item.Text) != "" {
-				a.syncTopicTitleBestEffort(ctx, session)
-			}
-		}
 		tgTurn := a.sessionTurn(key, item.TurnID)
 		if tgTurn == nil {
 			return false
+		}
+		// Title sync is driven by user-started turns. Goal/autonomous turns
+		// can run indefinitely and should not keep renaming the topic.
+		if !tgTurn.Autonomous && (item.Item.Type == "agentMessage" || item.Item.Type == "plan") && strings.TrimSpace(item.Item.Text) != "" {
+			a.syncTopicTitleBestEffort(ctx, session)
 		}
 		if tgTurn.isCompactionItemID(item.Item.ID) || isCompactionNoticeItem(item.Item) {
 			tgTurn.stopCompactionDraft()
@@ -821,12 +857,24 @@ func (a *app) handleTopicSessionEvent(ctx context.Context, key string, session *
 			answer = strings.TrimSpace(tgTurn.LastAgent)
 		}
 		answer = stripAssistantAppDirectives(answer)
-		if answer == "" {
-			answer = "Codex completed without a final text answer."
-		}
 		tgTurn.stopCompactionDraft()
 		if tgTurn.RunLog != nil {
 			tgTurn.RunLog.finish()
+		}
+		if answer == "" && tgTurn.Autonomous {
+			session.conv.LastSyncedTurnID = done.Turn.ID
+			if err := a.store.Upsert(session.conv); err != nil {
+				log.Printf("store sync marker: %v", err)
+			}
+			a.forgetTurnAction(key, tgTurn.TurnID)
+			a.removeSessionTurn(key, tgTurn.TurnID)
+			if !a.startNextQueuedTurn(ctx, key, session) && a.sessionTurnCount(key) == 0 && !a.shouldKeepSessionOpenForGoal(ctx, session) {
+				return true
+			}
+			return false
+		}
+		if answer == "" {
+			answer = "Codex completed without a final text answer."
 		}
 		if tgTurn.Initial != nil && sameTelegramText(tgTurn.Initial.text, answer) {
 			tgTurn.Initial.delete()
@@ -861,18 +909,34 @@ func (a *app) handleTopicSessionEvent(ctx context.Context, key string, session *
 				log.Printf("delete status message: %v", err)
 			}
 		}
-		a.syncTopicTitleBestEffort(ctx, session)
+		if !tgTurn.Autonomous {
+			a.syncTopicTitleBestEffort(ctx, session)
+		}
 		session.conv.LastSyncedTurnID = done.Turn.ID
 		if err := a.store.Upsert(session.conv); err != nil {
 			log.Printf("store sync marker: %v", err)
 		}
 		a.forgetTurnAction(key, tgTurn.TurnID)
 		a.removeSessionTurn(key, tgTurn.TurnID)
-		if !a.startNextQueuedTurn(ctx, key, session) && a.sessionTurnCount(key) == 0 {
+		if !a.startNextQueuedTurn(ctx, key, session) && a.sessionTurnCount(key) == 0 && !a.shouldKeepSessionOpenForGoal(ctx, session) {
 			return true
 		}
 	case "error":
 		log.Printf("codex app-server event error: %s", string(ev.Params))
 	}
 	return false
+}
+
+func (a *app) shouldKeepSessionOpenForGoal(ctx context.Context, session *activeTurn) bool {
+	if session == nil || session.client == nil || session.threadID == "" {
+		return false
+	}
+	goal, err := getThreadGoal(ctx, session.client, session.threadID)
+	if err != nil {
+		log.Printf("read Codex goal after turn completion: %v", err)
+		return false
+	}
+	return goal != nil &&
+		strings.TrimSpace(goal.Objective) != "" &&
+		strings.EqualFold(strings.TrimSpace(goal.Status), "active")
 }
